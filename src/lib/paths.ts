@@ -26,15 +26,15 @@ export const SERVICE_REPOS: Record<string, string> = {
   hobby_bot: `${SERVER_ROOT}/services/hobby_bot/repo`,
   maggots: `${SERVER_ROOT}/services/maggots/repo`,
   sillage: `${SERVER_ROOT}/services/sillage`,
-  server_ops: `${SERVER_ROOT}/server_ops`,
+  mantis: `${SERVER_ROOT}/mantis`,
   // alpha_lab is not deployed on Mini — dev rig only
 };
 
 // Backups directory (per-service subdirs, outside repos)
 export const BACKUP_DIR = `${SERVER_ROOT}/backups`;
 
-// Ops/deploy wrapper scripts (symlink: agent/wrappers → server_ops/scripts)
-export const WRAPPERS_DIR = `${AGENT_WORKSPACE}/wrappers`;
+// Ops/deploy wrapper scripts (symlink: agent/wrappers → mantis/scripts)
+export const WRAPPERS_DIR = `${SERVER_ROOT}/agent/wrappers`;
 
 // MANTIS
 export const MANTIS_TRPC_URL = "http://localhost:3200/api/trpc";
