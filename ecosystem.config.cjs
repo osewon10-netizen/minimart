@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: "sewon-ops-mcp",
     script: "build/index.js",
-    cwd: "/Users/minmac.serv/server/sewon-ops-mcp",
+    cwd: "/Users/minmac.serv/server/mini_cp_server",
     interpreter: "node",
     env: {
       NODE_ENV: "production",

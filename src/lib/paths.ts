@@ -23,12 +23,15 @@ export const MEMORY_DIR = `${AGENT_WORKSPACE}/memory`;
 
 // Service repos on Mini
 export const SERVICE_REPOS: Record<string, string> = {
-  hobby_bot: `${SERVER_ROOT}/hobby_bot`,
-  maggots: `${SERVER_ROOT}/maggots`,
-  sillage: `${SERVER_ROOT}/sillage`,
+  hobby_bot: `${SERVER_ROOT}/services/hobby_bot/repo`,
+  maggots: `${SERVER_ROOT}/services/maggots/repo`,
+  sillage: `${SERVER_ROOT}/services/sillage`,
   server_ops: `${SERVER_ROOT}/server_ops`,
-  alpha_lab: `${SERVER_ROOT}/alpha_lab`,
+  // alpha_lab is not deployed on Mini — dev rig only
 };
+
+// Backups directory (per-service subdirs, outside repos)
+export const BACKUP_DIR = `${SERVER_ROOT}/backups`;
 
 // MANTIS
 export const MANTIS_TRPC_URL = "http://localhost:3200/api/trpc";
@@ -38,4 +41,4 @@ export const MANTIS_HEALTH_URL = "http://localhost:3200/api/health";
 export const OLLAMA_URL = "http://localhost:11434";
 
 // MCP server config
-export const MCP_PORT = 3100;
+export const MCP_PORT = 6974;

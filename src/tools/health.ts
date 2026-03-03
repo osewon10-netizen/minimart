@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { pm2List } from "../lib/pm2-client.js";
 import { mantisQuery, mantisHealthCheck } from "../lib/mantis-client.js";
+import { BACKUP_DIR } from "../lib/paths.js";
 import type { MantisServiceState } from "../types.js";
 
 const execFileAsync = promisify(execFile);
@@ -56,6 +57,8 @@ export const tools: Tool[] = [
   },
 ];
 
+// Uses PM2 CLI directly (not MANTIS proxy) for raw, live process data.
+// For enriched health state (ok/warn/critical), use service_health instead.
 async function pm2Status(args: Record<string, unknown>): Promise<CallToolResult> {
   try {
     const processes = await pm2List();
@@ -106,26 +109,33 @@ async function diskUsage(): Promise<CallToolResult> {
 }
 
 async function backupStatus(): Promise<CallToolResult> {
-  const backupDir = "/Users/minmac.serv/backups";
   try {
-    const entries = await fs.readdir(backupDir, { withFileTypes: true });
-    const files = await Promise.all(
-      entries
-        .filter((e) => e.isFile())
-        .map(async (e) => {
-          const filePath = `${backupDir}/${e.name}`;
-          const stat = await fs.stat(filePath);
-          return {
-            filename: e.name,
-            size: stat.size,
-            sizeHuman: `${(stat.size / 1024 / 1024).toFixed(1)}MB`,
-            modified: stat.mtime.toISOString(),
-          };
-        })
-    );
-    // Sort by modified descending
-    files.sort((a, b) => b.modified.localeCompare(a.modified));
-    return { content: [{ type: "text", text: JSON.stringify(files, null, 2) }] };
+    const serviceDirs = await fs.readdir(BACKUP_DIR, { withFileTypes: true });
+    const results: Record<string, Array<{ filename: string; size: number; sizeHuman: string; modified: string }>> = {};
+
+    for (const dir of serviceDirs.filter((e) => e.isDirectory())) {
+      const dirPath = `${BACKUP_DIR}/${dir.name}`;
+      const files = await fs.readdir(dirPath, { withFileTypes: true });
+      const fileInfos = await Promise.all(
+        files
+          .filter((e) => e.isFile())
+          .map(async (e) => {
+            const filePath = `${dirPath}/${e.name}`;
+            const stat = await fs.stat(filePath);
+            return {
+              filename: e.name,
+              size: stat.size,
+              sizeHuman: `${(stat.size / 1024 / 1024).toFixed(1)}MB`,
+              modified: stat.mtime.toISOString(),
+            };
+          })
+      );
+      // Sort by modified descending, keep most recent per service
+      fileInfos.sort((a, b) => b.modified.localeCompare(a.modified));
+      results[dir.name] = fileInfos;
+    }
+
+    return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { content: [{ type: "text", text: `Backup dir error: ${msg}` }], isError: true };

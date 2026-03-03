@@ -1,5 +1,7 @@
 import { OLLAMA_URL } from "./paths.js";
 
+const OLLAMA_TIMEOUT_MS = parseInt(process.env.OLLAMA_TIMEOUT_MS ?? "120000", 10);
+
 export interface OllamaModel {
   name: string;
   size: number;
@@ -15,7 +17,7 @@ export async function ollamaGenerate(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, prompt, stream: false, ...options }),
-    signal: AbortSignal.timeout(120000), // 2 min for generation
+    signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
   });
 
   if (!res.ok) throw new Error(`Ollama error (${res.status}): ${await res.text()}`);

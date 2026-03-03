@@ -1,6 +1,18 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { mantisQuery, mantisMutation } from "../lib/mantis-client.js";
+import { SERVICE_REPOS } from "../lib/paths.js";
 import type { MantisServiceState, MantisRunnerResult } from "../types.js";
+
+function validateService(service: unknown): CallToolResult | null {
+  if (typeof service !== "string" || !service) {
+    return { content: [{ type: "text", text: "Missing required parameter: service" }], isError: true };
+  }
+  if (!(service in SERVICE_REPOS)) {
+    const known = Object.keys(SERVICE_REPOS).join(", ");
+    return { content: [{ type: "text", text: `Unknown service: ${service}. Known: ${known}` }], isError: true };
+  }
+  return null;
+}
 
 export const tools: Tool[] = [
   {
@@ -40,6 +52,8 @@ export const tools: Tool[] = [
 ];
 
 async function deployStatus(args: Record<string, unknown>): Promise<CallToolResult> {
+  const err = validateService(args.service);
+  if (err) return err;
   const service = args.service as string;
   try {
     const state = await mantisQuery<MantisServiceState>("services.byName", { service });
@@ -58,6 +72,8 @@ async function deployStatus(args: Record<string, unknown>): Promise<CallToolResu
 }
 
 async function deploy(args: Record<string, unknown>): Promise<CallToolResult> {
+  const err = validateService(args.service);
+  if (err) return err;
   const service = args.service as string;
   const commit = args.commit as string | undefined;
 
@@ -93,6 +109,8 @@ async function deploy(args: Record<string, unknown>): Promise<CallToolResult> {
 }
 
 async function rollback(args: Record<string, unknown>): Promise<CallToolResult> {
+  const err = validateService(args.service);
+  if (err) return err;
   const service = args.service as string;
   try {
     const result = await mantisMutation<MantisRunnerResult>("runner.execute", {

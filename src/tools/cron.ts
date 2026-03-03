@@ -73,7 +73,7 @@ async function triggerCron(args: Record<string, unknown>): Promise<CallToolResul
   const job = args.job as string;
   try {
     const result = await mantisMutation<MantisRunnerResult>("runner.execute", {
-      action: "backup",
+      action: "trigger_cron",
       caller: "agent",
       params: { job },
     });
