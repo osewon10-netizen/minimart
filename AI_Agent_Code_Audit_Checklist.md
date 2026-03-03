@@ -1,4 +1,4 @@
-# AI Agent Code Audit Checklist — sewon-ops-mcp
+# AI Agent Code Audit Checklist — mini-mart
 
 Deep audit checklist for comprehensive health reviews. Two modes based on scope.
 

@@ -1,11 +1,11 @@
-# MCP Server Implementation Plan — `sewon-ops-mcp`
+# MCP Server Implementation Plan — `mini-mart`
 
 > **For:** Sonnet (Claude Code implementation agent)
 > **Written by:** Opus (architect)
 > **Git remote:** `github.com/osewon10-netizen/MCP_Server`
 > **Runtime:** Node.js + TypeScript (NOT Bun — this runs on Mini which has Bun, but MCP SDK targets Node)
 > **Transport:** HTTP on port 3100
-> **Deploy target:** Mac Mini (`/Users/minmac.serv/server/sewon-ops-mcp/`)
+> **Deploy target:** Mac Mini (`/Users/minmac.serv/server/mini-mart/`)
 
 ---
 
@@ -27,7 +27,7 @@
 
 ```json
 {
-  "name": "sewon-ops-mcp",
+  "name": "mini-mart",
   "version": "1.0.0",
   "type": "module",
   "main": "build/index.js",
@@ -1052,7 +1052,7 @@ import {
 
 export function createServer(): Server {
   const server = new Server(
-    { name: "sewon-ops", version: "1.0.0" },
+    { name: "mini-mart", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
 
@@ -1102,7 +1102,7 @@ async function main() {
       await transport.handleRequest(req, res);
     } else if (req.method === "GET" && req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", service: "sewon-ops-mcp" }));
+      res.end(JSON.stringify({ status: "ok", service: "mini-mart" }));
     } else {
       res.writeHead(404);
       res.end("Not found");
@@ -1110,7 +1110,7 @@ async function main() {
   });
 
   httpServer.listen(MCP_PORT, () => {
-    console.error(`sewon-ops-mcp listening on port ${MCP_PORT}`);
+    console.error(`mini-mart listening on port ${MCP_PORT}`);
   });
 }
 
@@ -1139,7 +1139,7 @@ Verify: `ls build/` should contain compiled `.js` files mirroring `src/` structu
 
 ```bash
 node build/index.js
-# Should print: "sewon-ops-mcp listening on port 3100"
+# Should print: "mini-mart listening on port 3100"
 # Test health endpoint:
 curl http://localhost:3100/health
 ```
@@ -1151,16 +1151,16 @@ Create `ecosystem.config.cjs`:
 ```javascript
 module.exports = {
   apps: [{
-    name: "sewon-ops-mcp",
+    name: "mini-mart",
     script: "build/index.js",
-    cwd: "/Users/minmac.serv/server/sewon-ops-mcp",
+    cwd: "/Users/minmac.serv/server/mini-mart",
     interpreter: "node",
     env: {
       NODE_ENV: "production",
     },
     max_memory_restart: "256M",
-    error_file: "/Users/minmac.serv/server/logs/sewon-ops-mcp/pm2.err.log",
-    out_file: "/Users/minmac.serv/server/logs/sewon-ops-mcp/pm2.out.log",
+    error_file: "/Users/minmac.serv/server/logs/mini-mart/pm2.err.log",
+    out_file: "/Users/minmac.serv/server/logs/mini-mart/pm2.out.log",
   }],
 };
 ```
@@ -1169,10 +1169,10 @@ module.exports = {
 
 ```bash
 # On Mini (for Mini-side agents)
-claude mcp add --transport http sewon-ops http://localhost:3100/mcp
+claude mcp add --transport http mini-mart http://localhost:3100/mcp
 
 # On dev rig (for dev rig agents, over Tailscale)
-claude mcp add --transport http sewon-ops http://100.109.172.87:3100/mcp
+claude mcp add --transport http mini-mart http://100.109.172.87:3100/mcp
 ```
 
 **Note:** Replace `100.109.172.87` with Mini's actual Tailscale IP.
@@ -1240,7 +1240,7 @@ After implementation, verify each tool group:
 # Server starts
 node build/index.js &
 curl http://localhost:3100/health
-# → {"status":"ok","service":"sewon-ops-mcp"}
+# → {"status":"ok","service":"mini-mart"}
 
 # Tickets (if ticket files exist on Mini)
 # Use MCP client or curl to test list_tickets

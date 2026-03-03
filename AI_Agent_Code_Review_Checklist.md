@@ -1,4 +1,4 @@
-# AI Agent Code Review Checklist — sewon-ops-mcp
+# AI Agent Code Review Checklist — mini-mart
 
 Review checklist for AI-generated code changes. Three tiers based on change scope.
 

@@ -1,4 +1,4 @@
-# sewon-ops-mcp
+# mini-mart
 
 MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 33 structured tools over HTTP — ticketing, deployments, health monitoring, MANTIS proxy, git operations, and local LLM inference.
 
@@ -7,8 +7,8 @@ MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastruc
 Multiple AI agents (Claude Code, Codex, Gemini CLI, OpenClaw) need structured access to the same infrastructure. Instead of each agent implementing its own SSH commands and file parsing, this server provides a single, typed tool interface over MCP. Agents on the dev rig reach it over Tailscale; agents on Mini hit it locally.
 
 ```
-Dev rig agents ──── Tailscale (100.x.x.x:6974) ──→ sewon-ops-mcp
-Mini-side agents ── localhost:6974 ─────────────────→ sewon-ops-mcp
+Dev rig agents ──── Tailscale (100.x.x.x:6974) ──→ mini-mart
+Mini-side agents ── localhost:6974 ─────────────────→ mini-mart
                                                         │
                                                         ├─→ MANTIS (localhost:3200)
                                                         ├─→ PM2 CLI
@@ -28,11 +28,11 @@ npm run build
 
 # Start
 npm start
-# → sewon-ops-mcp listening on port 6974
+# → mini-mart listening on port 6974
 
 # Health check
 curl http://localhost:6974/health
-# → {"status":"ok","service":"sewon-ops-mcp"}
+# → {"status":"ok","service":"mini-mart"}
 ```
 
 ## Stack
@@ -173,25 +173,25 @@ Runs on Mac Mini under PM2:
 ```bash
 # Start/restart
 pm2 start ecosystem.config.cjs
-pm2 restart sewon-ops-mcp
+pm2 restart mini-mart
 
 # View logs
-pm2 logs sewon-ops-mcp --lines 50
+pm2 logs mini-mart --lines 50
 
 # Monitor
 pm2 monit
 ```
 
-PM2 config: 256M memory limit, auto-restart on crash, logs to `/Users/minmac.serv/server/logs/sewon-ops-mcp/`.
+PM2 config: 256M memory limit, auto-restart on crash, logs to `/Users/minmac.serv/server/logs/mini-mart/`.
 
 ### Agent Registration
 
 ```bash
 # On Mini (local)
-claude mcp add --transport http sewon-ops http://localhost:6974/mcp
+claude mcp add --transport http mini-mart http://localhost:6974/mcp
 
 # On dev rig (over Tailscale)
-claude mcp add --transport http sewon-ops http://100.x.x.x:6974/mcp
+claude mcp add --transport http mini-mart http://100.x.x.x:6974/mcp
 ```
 
 ## Integration Dependencies

@@ -1,4 +1,4 @@
-# AGENTS.md — sewon-ops-mcp
+# AGENTS.md — mini-mart
 
 ## 1. Identity
 
@@ -29,7 +29,7 @@
 mini_cp_server/
 ├── package.json              # Node project, deps: @modelcontextprotocol/sdk, superjson
 ├── tsconfig.json             # ES2022 target, NodeNext, strict, sourceMap
-├── ecosystem.config.cjs      # PM2 config — name: sewon-ops-mcp, 256M max
+├── ecosystem.config.cjs      # PM2 config — name: mini-mart, 256M max
 ├── .gitignore                # node_modules/, build/, *.tsbuildinfo, .env
 │
 ├── src/
@@ -246,19 +246,19 @@ npm run dev
 
 # Start server locally
 npm start
-# → sewon-ops-mcp listening on port 6974
+# → mini-mart listening on port 6974
 
 # Type check only (no emit)
 npx tsc --noEmit
 
 # PM2 deploy (on Mini)
 pm2 start ecosystem.config.cjs
-pm2 restart sewon-ops-mcp
-pm2 logs sewon-ops-mcp --lines 50
+pm2 restart mini-mart
+pm2 logs mini-mart --lines 50
 
 # Health check
 curl http://localhost:6974/health
-# → {"status":"ok","service":"sewon-ops-mcp"}
+# → {"status":"ok","service":"mini-mart"}
 
 # Test MCP endpoint (list tools)
 curl -X POST http://localhost:6974/mcp \

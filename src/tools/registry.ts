@@ -42,11 +42,11 @@ const SERVICES: ServiceInfo[] = [
     checklistFile: "AI_Agent_Code_Review_Checklist.md",
   },
   {
-    name: "sewon_ops_mcp",
-    displayName: "sewon-ops-mcp (Agent Tooling)",
+    name: "mini_mart",
+    displayName: "Mini Mart (Agent Tooling)",
     stack: "Node.js, TypeScript, MCP SDK",
     repoPath: "/Users/minmac.serv/server/mini_cp_server",
-    pm2Name: "sewon-ops-mcp",
+    pm2Name: "mini-mart",
     port: 6974,
     hasAgentsMd: true,
     checklistFile: "AI_Agent_Code_Review_Checklist.md",
@@ -60,7 +60,7 @@ export const tools: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        service: { type: "string", description: "Service name (e.g. hobby_bot, maggots, sillage, server_ops, sewon_ops_mcp)" },
+        service: { type: "string", description: "Service name (e.g. hobby_bot, maggots, sillage, server_ops, mini_mart)" },
       },
     },
   },
