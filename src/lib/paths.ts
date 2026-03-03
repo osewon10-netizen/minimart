@@ -33,8 +33,8 @@ export const SERVICE_REPOS: Record<string, string> = {
 // Backups directory (per-service subdirs, outside repos)
 export const BACKUP_DIR = `${SERVER_ROOT}/backups`;
 
-// Ops/deploy wrapper scripts (symlink: agent/wrappers → mantis/scripts)
-export const WRAPPERS_DIR = `${SERVER_ROOT}/agent/wrappers`;
+// Ops/deploy wrapper scripts (directly in mantis repo)
+export const WRAPPERS_DIR = `${SERVER_ROOT}/mantis/scripts`;
 
 // Metrics (time-series data, JSONL files)
 export const METRICS_DIR = `${AGENT_WORKSPACE}/metrics`;
