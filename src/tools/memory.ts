@@ -30,7 +30,7 @@ export const tools: Tool[] = [
   },
   {
     name: "get_ticketing_guide",
-    description: "Load the ticketing workflow reference for this agent's role. Call at session start to learn lifecycle, status transitions, assigned_to conventions, and tiering rules.",
+    description: "Load the ticketing workflow reference for this agent's role. Call at session start to learn lifecycle, status transitions, assigned_to conventions, and tiering rules. Use role=\"dev\" for the dev rig ticketing guide (TICKETING_DEV.md), role=\"mini\" for the server-side agent guide (TICKETING_MINI.md).",
     inputSchema: {
       type: "object",
       properties: {
