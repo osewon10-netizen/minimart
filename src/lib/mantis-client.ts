@@ -31,7 +31,9 @@ export async function mantisQuery<T = unknown>(
 
   const json = await res.json();
   // tRPC wraps response in { result: { data: ... } }
-  return json?.result?.data as T;
+  // SuperJSON transformer further wraps data as { json: <value>, meta?: ... }
+  const data = json?.result?.data;
+  return (data !== null && typeof data === "object" && "json" in data ? data.json : data) as T;
 }
 
 /**
@@ -57,7 +59,8 @@ export async function mantisMutation<T = unknown>(
   }
 
   const json = await res.json();
-  return json?.result?.data as T;
+  const data = json?.result?.data;
+  return (data !== null && typeof data === "object" && "json" in data ? data.json : data) as T;
 }
 
 /**

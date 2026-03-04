@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -224,9 +224,33 @@ async function tailServiceUrl(args: Record<string, unknown>): Promise<CallToolRe
   }
 }
 
+const SELF_PM2_NAME = "minimart";
+
 async function pm2Restart(args: Record<string, unknown>): Promise<CallToolResult> {
   const service = args.service as string;
   const start = performance.now();
+
+  // Self-restart guard: if restarting minimart itself, fire-and-forget.
+  // Awaiting would kill the connection before a response is sent.
+  if (service === SELF_PM2_NAME) {
+    const child = spawn("pm2", ["restart", service, "--update-env"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    const elapsed = Math.round(performance.now() - start);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          status: "restarting",
+          note: "minimart is restarting itself — connection will drop. Reconnect in ~5s.",
+          elapsed_ms: elapsed,
+        }, null, 2),
+      }],
+    };
+  }
 
   try {
     await execFileAsync("pm2", ["restart", service, "--update-env"], { timeout: 30000 });

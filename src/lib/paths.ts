@@ -27,6 +27,7 @@ export const SERVICE_REPOS: Record<string, string> = {
   maggots: `${SERVER_ROOT}/services/maggots/repo`,
   sillage: `${SERVER_ROOT}/services/sillage`,
   mantis: `${SERVER_ROOT}/mantis`,
+  minimart: `${SERVER_ROOT}/minimart`,
   // alpha_lab is not deployed on Mini — dev rig only
 };
 
