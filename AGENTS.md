@@ -62,7 +62,7 @@ mini_cp_server/
 │       ├── git.ts            # 3 tools: git_log, git_diff, git_status
 │       ├── ollama.ts         # 2 tools: ollama_generate, ollama_models
 │       ├── wrappers.ts       # 2 tools: list_wrappers, run_wrapper
-│       ├── overview.ts       # 5 tools: server_overview, quick_status, batch_ticket_status, my_queue, peek, pick_up
+│       ├── overview.ts       # 7 tools: server_overview, quick_status, batch_ticket_status, my_queue, peek, pick_up, batch_archive
 │       ├── training.ts       # 1 tool: export_training_data (archive → JSONL training records)
 │       ├── files.ts          # 2 tools: file_read, file_write (scoped to agent/workspace/)
 │       └── network.ts        # 1 tool: network_quality (time-series metrics)
@@ -101,9 +101,9 @@ Agent (any machine)
 
 **Stateless design:** Each POST /mcp creates a fresh MCP server + transport. No sessions, no state between requests. This is deliberate — the server is a tool bridge, not an application.
 
-## 5. Tool Registry (53 tools)
+## 5. Tool Registry (54 tools)
 
-### Ticketing & Handoffs (22 tools)
+### Ticketing & Handoffs (23 tools)
 | Tool | Module | What It Does |
 |------|--------|-------------|
 | `create_ticket` | tickets.ts | Create TK-XXX with detection context, auto-assigns to author |
@@ -208,6 +208,7 @@ Agent (any machine)
 | `server_overview` | overview.ts | Single-call aggregate: PM2, disk, tickets, backups, watchdog |
 | `quick_status` | overview.ts | Lightweight: PM2 names + statuses, open ticket/patch counts |
 | `batch_ticket_status` | overview.ts | Batch lookup of TK/PA IDs across open + archive |
+| `batch_archive` | overview.ts | Archive multiple TK/PA IDs in one call — auto-populates Related across batch |
 
 ### Files (2 tools)
 | Tool | Module | What It Does |

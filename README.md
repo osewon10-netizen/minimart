@@ -150,7 +150,7 @@ src/
 │   ├── mantis-client.ts      # HTTP client → MANTIS tRPC
 │   ├── pm2-client.ts         # PM2 CLI wrapper
 │   └── ollama-client.ts      # Ollama REST client
-└── tools/                # 18 tool modules (53 tools total)
+└── tools/                # 18 tool modules (54 tools total)
     ├── tickets.ts        # Ticket CRUD + search + archive + assign
     ├── patches.ts        # Patch CRUD + search + archive + assign
     ├── tags.ts           # Tag normalization
