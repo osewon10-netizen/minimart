@@ -1,10 +1,21 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { getFileWorkspace } from "../lib/paths.js";
+import { getFileWorkspace, SERVICE_REPOS } from "../lib/paths.js";
 
 const MAX_READ_BYTES = 100 * 1024;  // 100KB
 const MAX_WRITE_BYTES = 1024 * 1024; // 1MB
+const MAX_SOURCE_READ_BYTES = 50 * 1024; // 50KB cap for source reads
+
+// Binary file extensions — reject these
+const BINARY_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
+  ".pdf", ".zip", ".tar", ".gz", ".bz2", ".7z",
+  ".exe", ".bin", ".dylib", ".so", ".dll",
+  ".db", ".sqlite", ".sqlite3",
+  ".woff", ".woff2", ".ttf", ".eot",
+  ".mp4", ".mp3", ".wav",
+]);
 
 // ─── Tool Definitions ───────────────────────────────────────────────
 
@@ -41,6 +52,24 @@ export const tools: Tool[] = [
         },
       },
       required: ["path", "content"],
+    },
+  },
+  {
+    name: "read_source_file",
+    description: "Read a source file from a service repo (read-only). Path must be relative to the service repo root. Max 50KB. Rejects binary files and paths outside the service repo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        service: {
+          type: "string",
+          description: `Service name — one of: ${Object.keys(SERVICE_REPOS).join(", ")}`,
+        },
+        path: {
+          type: "string",
+          description: "Relative path within the service repo, e.g. 'src/lib/paths.ts'",
+        },
+      },
+      required: ["service", "path"],
     },
   },
 ];
@@ -155,12 +184,66 @@ async function fileWrite(args: Record<string, unknown>): Promise<CallToolResult>
   }
 }
 
+async function readSourceFile(args: Record<string, unknown>): Promise<CallToolResult> {
+  const service = args.service as string;
+  const userPath = args.path as string;
+
+  const repoRoot = SERVICE_REPOS[service];
+  if (!repoRoot) {
+    const known = Object.keys(SERVICE_REPOS).join(", ");
+    return { content: [{ type: "text", text: `Unknown service: "${service}". Known: ${known}` }], isError: true };
+  }
+
+  // Reject absolute paths and traversal
+  if (path.isAbsolute(userPath) || userPath.includes("..")) {
+    return { content: [{ type: "text", text: "Path must be relative and must not contain '..'" }], isError: true };
+  }
+
+  // Reject binary extensions
+  const ext = path.extname(userPath).toLowerCase();
+  if (BINARY_EXTENSIONS.has(ext)) {
+    return { content: [{ type: "text", text: `Binary file type not allowed: ${ext}` }], isError: true };
+  }
+
+  const resolved = path.resolve(repoRoot, userPath);
+
+  // Must stay within repo root after resolution
+  if (!resolved.startsWith(repoRoot + path.sep) && resolved !== repoRoot) {
+    return { content: [{ type: "text", text: "Path resolves outside service repo boundary" }], isError: true };
+  }
+
+  try {
+    const stat = await fs.stat(resolved);
+    if (!stat.isFile()) {
+      return { content: [{ type: "text", text: `Not a file: ${userPath}` }], isError: true };
+    }
+    if (stat.size > MAX_SOURCE_READ_BYTES) {
+      return {
+        content: [{ type: "text", text: `File too large: ${stat.size} bytes (max ${MAX_SOURCE_READ_BYTES})` }],
+        isError: true,
+      };
+    }
+
+    const content = await fs.readFile(resolved, "utf-8");
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ service, path: userPath, size: stat.size, content }, null, 2),
+      }],
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { content: [{ type: "text", text: `Read error: ${msg}` }], isError: true };
+  }
+}
+
 // ─── Dispatch ───────────────────────────────────────────────────────
 
 export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "file_read": return fileRead(args);
     case "file_write": return fileWrite(args);
+    case "read_source_file": return readSourceFile(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }

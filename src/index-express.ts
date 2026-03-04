@@ -8,6 +8,7 @@ import { EXPRESS_MCP_PORT, OLLAMA_WORKSPACE } from "./lib/paths.js";
 const ALLOWED_TOOLS = [
   "file_read",        // scoped to ollama workspace via env
   "file_write",       // scoped to ollama workspace via env
+  "read_source_file", // read-only source files from service repos (50KB cap)
   "ollama_generate",  // local inference
   "ollama_models",    // list available models
   "service_logs",     // read-only logs
