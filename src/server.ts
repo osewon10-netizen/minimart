@@ -26,6 +26,7 @@ import * as networkMod from "./tools/network.js";
 import * as trainingMod from "./tools/training.js";
 import * as ocMod from "./tools/oc.js";
 import * as taskConfigMod from "./tools/task-config.js";
+import * as ollamaHelpersMod from "./tools/ollama-helpers.js";
 
 type ToolHandler = (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
 
@@ -55,6 +56,7 @@ const toolModules: ToolModule[] = [
   trainingMod,
   ocMod,
   taskConfigMod,
+  ollamaHelpersMod,
 ];
 
 export interface ServerConfig {

@@ -2,7 +2,7 @@
 
 ## 1. Identity
 
-**What:** MCP (Model Context Protocol) server exposing 61 structured tools over HTTP for multi-agent ops across 4 service repos on Mini. Also runs a scoped instance (`minimart_express`) on port 6975 with 28 tools for the local Ollama agent.
+**What:** MCP (Model Context Protocol) server exposing 64 structured tools over HTTP for multi-agent ops across 4 service repos on Mini. Also runs a scoped instance (`minimart_express`) on port 6975 with 28 tools for the local Ollama agent.
 
 **Who uses it:** Claude Code (Opus/Sonnet), Codex, Gemini CLI, OpenClaw — any agent that speaks MCP over HTTP.
 
@@ -38,7 +38,7 @@ mini_cp_server/
 ├── src/
 │   ├── index.ts              # HTTP entry — POST /mcp, GET /health (port 6974)
 │   ├── index-express.ts      # Scoped HTTP entry — 28 tools, localhost:6975, concurrency guard
-│   ├── server.ts             # MCP server factory — registers 20 tool modules, optional allowlist
+│   ├── server.ts             # MCP server factory — registers 21 tool modules, optional allowlist
 │   ├── types.ts              # All shared interfaces (Ticket, Patch, MANTIS, etc.)
 │   │
 │   ├── lib/                  # Shared utilities (no tools here)
@@ -69,10 +69,11 @@ mini_cp_server/
 │       ├── wrappers.ts       # 2 tools: list_wrappers, run_wrapper
 │       ├── overview.ts       # 7 tools: server_overview, quick_status, batch_ticket_status, my_queue, peek, pick_up, batch_archive
 │       ├── training.ts       # 1 tool: export_training_data (archive → JSONL training records)
-│       ├── files.ts          # 2 tools: file_read, file_write (scoped to agent/workspace/)
+│       ├── files.ts          # 3 tools: file_read, file_write (scoped to agent/workspace/), read_source_file
 │       ├── network.ts        # 1 tool: network_quality (time-series metrics)
 │       ├── oc.ts             # 6 tools: create/list/view/update_oc_task, archive_oc_task, list_oc_archive
-│       └── task-config.ts    # 1 tool: get_task_config (task type registry + prompt loader)
+│       ├── task-config.ts    # 1 tool: get_task_config (task type registry + prompt loader)
+│       └── ollama-helpers.ts # 2 tools: ollama_summarize_logs, ollama_digest_service (frontier-facing only, not on express)
 │
 └── build/                    # Compiled JS output (gitignored)
 ```
@@ -103,12 +104,13 @@ Agent (any machine)
   │                    ├─ tools/wrappers.ts ───→ ops scripts (agent/wrappers/)
   │                    ├─ tools/overview.ts ───→ aggregates PM2+disk+tickets+watchdog
   │                    ├─ tools/files.ts ──────→ filesystem (scoped to agent/workspace/)
-  │                    └─ tools/network.ts ────→ ping + metrics JSONL
+  │                    ├─ tools/network.ts ────→ ping + metrics JSONL
+  │                    └─ tools/ollama-helpers.ts → Ollama inference (frontier-facing, not on express)
 ```
 
 **Stateless design:** Each POST /mcp creates a fresh MCP server + transport. No sessions, no state between requests. This is deliberate — the server is a tool bridge, not an application.
 
-## 5. Tool Registry (61 tools)
+## 5. Tool Registry (64 tools)
 
 ### Ticketing & Handoffs (23 tools)
 | Tool | Module | What It Does |
@@ -217,11 +219,12 @@ Agent (any machine)
 | `batch_ticket_status` | overview.ts | Batch lookup of TK/PA IDs across open + archive |
 | `batch_archive` | overview.ts | Archive multiple TK/PA IDs in one call — auto-populates Related across batch |
 
-### Files (2 tools)
+### Files (3 tools)
 | Tool | Module | What It Does |
 |------|--------|-------------|
 | `file_read` | files.ts | Read file within agent/workspace/ (100KB cap) |
 | `file_write` | files.ts | Write file within agent/workspace/ (1MB cap, path-scoped) |
+| `read_source_file` | files.ts | Read source file from a service repo (read-only, 50KB cap, binary rejected) |
 
 ### Network (1 tool)
 | Tool | Module | What It Does |
@@ -238,6 +241,12 @@ Agent (any machine)
 | `archive_oc_task` | oc.ts | Move completed task from index → monthly JSONL archive (tasks/archive/YYYY-MM.jsonl) |
 | `list_oc_archive` | oc.ts | Search archived OC tasks by month, task_type, service (most recent first, limit 50) |
 | `get_task_config` | task-config.ts | Get execution config + prompt template for an OC task type. Omit task_type for full registry |
+
+### Ollama Helpers (2 tools) — frontier-facing, NOT on express
+| Tool | Module | What It Does |
+|------|--------|-------------|
+| `ollama_summarize_logs` | ollama-helpers.ts | Compress PM2 logs into 10-15 line NL summary via Qwen3-4B. 5-min cache, 100KB log cap, fallback to raw on timeout |
+| `ollama_digest_service` | ollama-helpers.ts | One-call service briefing (pm2+logs+tickets+patches → 15-25 line NL). mode=fast skips logs. 5-min cache |
 
 ## 6. Mini Server Filesystem
 

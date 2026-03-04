@@ -1,14 +1,14 @@
 # minimart
 
-MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 61 structured tools over HTTP — ticketing with agent handoffs, deployments, health monitoring, MANTIS proxy, git operations, file access, network metrics, training data export, local LLM inference, and Ollama task management.
+MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 64 structured tools over HTTP — ticketing with agent handoffs, deployments, health monitoring, MANTIS proxy, git operations, file access, network metrics, training data export, local LLM inference, and Ollama task management.
 
 ## Why This Exists
 
 Multiple AI agents (Claude Code, Codex, Gemini CLI, OpenClaw) need structured access to the same infrastructure. Instead of each agent implementing its own SSH commands and file parsing, this server provides a single, typed tool interface over MCP. Dev rig agents reach it via SSH tunnel (forwarded to localhost); agents on Mini hit it locally.
 
 ```
-Dev rig agents ──── SSH tunnel → localhost:16974 ──→ minimart (port 6974, all 61 tools)
-Mini-side agents ── localhost:6974 ─────────────────→ minimart (port 6974, all 61 tools)
+Dev rig agents ──── SSH tunnel → localhost:16974 ──→ minimart (port 6974, all 64 tools)
+Mini-side agents ── localhost:6974 ─────────────────→ minimart (port 6974, all 64 tools)
 Ollama agent ────── localhost:6975 ─────────────────→ minimart_express (28 tools, scoped)
                                                         │
                                                         ├─→ MANTIS (localhost:3200)
@@ -72,7 +72,7 @@ Both use bare `node:http` with two routes: `POST /mcp` and `GET /health`. Statel
 | Local LLM | Ollama (localhost:11434) | REST API |
 | Service metadata | In-memory registry | Hardcoded in `registry.ts` |
 
-## Tools (61 total)
+## Tools (64 total)
 
 ### Ticketing & Handoffs (22)
 - `create_ticket` / `list_tickets` / `view_ticket` / `search_tickets` / `update_ticket` / `update_ticket_status` / `archive_ticket` / `assign_ticket`
@@ -167,7 +167,7 @@ src/
 │   ├── pm2-client.ts         # PM2 CLI wrapper
 │   ├── ollama-client.ts      # Ollama REST client
 │   └── task-registry.ts     # OC task type configs (12 types) + validation set
-└── tools/                # 20 tool modules (61 tools total)
+└── tools/                # 21 tool modules (64 tools total)
     ├── tickets.ts        # Ticket CRUD + search + archive + assign
     ├── patches.ts        # Patch CRUD + search + archive + assign
     ├── tags.ts           # Tag normalization
@@ -232,7 +232,7 @@ pm2 monit
 ```
 
 PM2 config:
-- `minimart` — 256M memory limit, all 61 tools, logs to `logs/minimart/`
+- `minimart` — 256M memory limit, all 64 tools, logs to `logs/minimart/`
 - `minimart_express` — 128M memory limit, 28 tools, localhost-only, file workspace scoped to `agent/ollama/`, logs to `logs/minimart_express/`
 
 ### Agent Registration
