@@ -56,7 +56,10 @@ async function deployStatus(args: Record<string, unknown>): Promise<CallToolResu
   if (err) return err;
   const service = args.service as string;
   try {
-    const state = await mantisQuery<MantisServiceState>("services.byName", { service });
+    const state = await mantisQuery<MantisServiceState | null>("services.byName", { service });
+    if (!state) {
+      return { content: [{ type: "text", text: `MANTIS has no health record for "${service}" — watchdog may not be tracking it yet.` }], isError: true };
+    }
     const result = {
       service: state.service,
       state: state.state,
@@ -79,8 +82,8 @@ async function deploy(args: Record<string, unknown>): Promise<CallToolResult> {
 
   // Safety check: refuse if service is critical
   try {
-    const state = await mantisQuery<MantisServiceState>("services.byName", { service });
-    if (state.state === "critical") {
+    const state = await mantisQuery<MantisServiceState | null>("services.byName", { service });
+    if (state?.state === "critical") {
       return {
         content: [{
           type: "text",
