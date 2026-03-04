@@ -6,7 +6,7 @@
 
 **Who uses it:** Claude Code (Opus/Sonnet), Codex, Gemini CLI, OpenClaw — any agent that speaks MCP over HTTP.
 
-**Where it runs:** Mac Mini (production), port 6974. Not on the dev rig. Dev rig agents reach it over Tailscale (`http://100.x.x.x:6974/mcp`). Mini-side agents hit `http://localhost:6974/mcp`.
+**Where it runs:** Mac Mini (production), port 6974. Not on the dev rig. Dev rig Claude Code agents cannot reach Tailscale directly (sandbox blocks it) — use an SSH tunnel: `ssh -L 16974:localhost:6974 minmac.serv@100.126.124.95 -N`, then MCP URL is `http://localhost:16974/mcp`. Mini-side agents hit `http://localhost:6974/mcp`.
 
 **What it is NOT:** This is a bridge/proxy layer. It does NOT replace MANTIS. It proxies MANTIS where MANTIS owns the capability (deploys, health checks, cron, events) and only goes direct for things MANTIS doesn't expose (raw PM2 data, log grep, git ops, Ollama).
 

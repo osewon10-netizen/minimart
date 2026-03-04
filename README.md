@@ -4,10 +4,10 @@ MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastruc
 
 ## Why This Exists
 
-Multiple AI agents (Claude Code, Codex, Gemini CLI, OpenClaw) need structured access to the same infrastructure. Instead of each agent implementing its own SSH commands and file parsing, this server provides a single, typed tool interface over MCP. Agents on the dev rig reach it over Tailscale; agents on Mini hit it locally.
+Multiple AI agents (Claude Code, Codex, Gemini CLI, OpenClaw) need structured access to the same infrastructure. Instead of each agent implementing its own SSH commands and file parsing, this server provides a single, typed tool interface over MCP. Dev rig agents reach it via SSH tunnel (forwarded to localhost); agents on Mini hit it locally.
 
 ```
-Dev rig agents ──── Tailscale (100.x.x.x:6974) ──→ mini-mart
+Dev rig agents ──── SSH tunnel → localhost:16974 ──→ mini-mart
 Mini-side agents ── localhost:6974 ─────────────────→ mini-mart
                                                         │
                                                         ├─→ MANTIS (localhost:3200)
@@ -210,8 +210,9 @@ PM2 config: 256M memory limit, auto-restart on crash, logs to `/Users/minmac.ser
 # On Mini (local)
 claude mcp add --transport http mini-mart http://localhost:6974/mcp
 
-# On dev rig (over Tailscale)
-claude mcp add --transport http mini-mart http://100.x.x.x:6974/mcp
+# On dev rig (SSH tunnel — Claude Code sandbox blocks direct Tailscale)
+# First: ssh -L 16974:localhost:6974 minmac.serv@100.126.124.95 -N
+claude mcp add --transport http mini-mart http://localhost:16974/mcp
 ```
 
 ## Integration Dependencies
