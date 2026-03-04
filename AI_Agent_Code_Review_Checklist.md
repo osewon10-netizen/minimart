@@ -55,13 +55,15 @@ npx tsc --noEmit       # Zero type errors
 
 ### R8. Server Registration
 - [ ] If a new tool module was added: it's imported in `server.ts` and added to `toolModules[]`
-- [ ] Tool names are globally unique across all 17 modules (no collisions)
+- [ ] Tool names are globally unique across all 18 modules (no collisions)
 - [ ] `tools/list` response includes the new tool (verify by reading `getAllToolDefinitions()` flow)
 
 ### R9. Index Operations
-- [ ] All ticket/patch index writes use `writeIndex()` from `index-manager.ts` (atomic: write .tmp → rename)
+- [ ] All ticket/patch index writes use `writeIndex()` from `index-manager.ts` (backup → fsync → validate → rename)
 - [ ] Index reads happen before writes (no blind overwrites)
 - [ ] `allocateId()` increments `next_id` correctly
+- [ ] Archive operations use `archive.ts` helpers, not direct `fs.appendFile`
+- [ ] No markdown file generation — index entry is the sole source of truth
 
 ### R10. Shell Command Safety
 - [ ] All shell commands use `execFileAsync` (NOT `exec`) — prevents shell injection

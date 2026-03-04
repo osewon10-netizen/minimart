@@ -2,7 +2,7 @@
 
 ## 1. Identity
 
-**What:** MCP (Model Context Protocol) server exposing 46 structured tools over HTTP for multi-agent ops across 4 service repos on Mini.
+**What:** MCP (Model Context Protocol) server exposing 53 structured tools over HTTP for multi-agent ops across 4 service repos on Mini.
 
 **Who uses it:** Claude Code (Opus/Sonnet), Codex, Gemini CLI, OpenClaw — any agent that speaks MCP over HTTP.
 
@@ -34,13 +34,13 @@ mini_cp_server/
 │
 ├── src/
 │   ├── index.ts              # HTTP entry — POST /mcp, GET /health
-│   ├── server.ts             # MCP server factory — registers 17 tool modules
+│   ├── server.ts             # MCP server factory — registers 18 tool modules
 │   ├── types.ts              # All shared interfaces (Ticket, Patch, MANTIS, etc.)
 │   │
 │   ├── lib/                  # Shared utilities (no tools here)
 │   │   ├── paths.ts          # All filesystem paths, URLs, port — single source of truth
-│   │   ├── index-manager.ts  # Atomic index.json read/write (tmp-then-rename)
-│   │   ├── template-renderer.ts  # Ticket/patch markdown generation
+│   │   ├── index-manager.ts  # Hardened index.json read/write (backup+fsync+validate+rename)
+│   │   ├── archive.ts        # JSONL archive operations (append, search, lookup, migration)
 │   │   ├── tag-normalizer.ts     # Tag-map.json loader + normalizer
 │   │   ├── failure-validator.ts  # Failure-class validation + fuzzy suggestions
 │   │   ├── mantis-client.ts      # Raw HTTP fetch → MANTIS tRPC (localhost:3200)
@@ -48,8 +48,8 @@ mini_cp_server/
 │   │   └── ollama-client.ts      # Ollama REST client (localhost:11434)
 │   │
 │   └── tools/                # Tool modules — each exports tools[] + handleCall()
-│       ├── tickets.ts        # 6 tools: create/list/view/search/update/archive tickets
-│       ├── patches.ts        # 6 tools: create/list/view/search/update/archive patches
+│       ├── tickets.ts        # 8 tools: create/list/view/search/update/update_status/archive/assign tickets
+│       ├── patches.ts        # 8 tools: create/list/view/search/update/update_status/archive/assign patches
 │       ├── tags.ts           # 2 tools: lookup_tags, validate_failure_class
 │       ├── registry.ts       # 1 tool: service_registry
 │       ├── mantis.ts         # 6 tools: events, rules, runner proxy
@@ -62,7 +62,8 @@ mini_cp_server/
 │       ├── git.ts            # 3 tools: git_log, git_diff, git_status
 │       ├── ollama.ts         # 2 tools: ollama_generate, ollama_models
 │       ├── wrappers.ts       # 2 tools: list_wrappers, run_wrapper
-│       ├── overview.ts       # 2 tools: server_overview, batch_ticket_status
+│       ├── overview.ts       # 5 tools: server_overview, quick_status, batch_ticket_status, my_queue, peek, pick_up
+│       ├── training.ts       # 1 tool: export_training_data (archive → JSONL training records)
 │       ├── files.ts          # 2 tools: file_read, file_write (scoped to agent/workspace/)
 │       └── network.ts        # 1 tool: network_quality (time-series metrics)
 │
@@ -100,25 +101,33 @@ Agent (any machine)
 
 **Stateless design:** Each POST /mcp creates a fresh MCP server + transport. No sessions, no state between requests. This is deliberate — the server is a tool bridge, not an application.
 
-## 5. Tool Registry (46 tools)
+## 5. Tool Registry (53 tools)
 
-### Ticketing (14 tools)
+### Ticketing & Handoffs (22 tools)
 | Tool | Module | What It Does |
 |------|--------|-------------|
-| `create_ticket` | tickets.ts | Create TK-XXX with validation + tag normalization |
-| `list_tickets` | tickets.ts | Filter by service/status from index.json |
-| `view_ticket` | tickets.ts | Read full markdown file content |
-| `search_tickets` | tickets.ts | Keyword search across open index + archive |
-| `update_ticket_status` | tickets.ts | Status transition + file rename + archive on resolve |
-| `archive_ticket` | tickets.ts | Full close workflow: fill verification, rename, move, archive |
-| `create_patch` | patches.ts | Create PA-XXX with validation |
-| `list_patches` | patches.ts | Filter by service/status from index.json |
-| `view_patch` | patches.ts | Read full markdown file content |
-| `search_patches` | patches.ts | Keyword search across open index + archive |
+| `create_ticket` | tickets.ts | Create TK-XXX with detection context, auto-assigns to author |
+| `list_tickets` | tickets.ts | Filter by service/status, shows assigned_to/claimed_by |
+| `view_ticket` | tickets.ts | View entry (checks open index, then archive). mode=human for formatted text |
+| `search_tickets` | tickets.ts | Keyword + tag filter across open index + archive |
+| `update_ticket` | tickets.ts | Update fields directly on index entry (evidence, patch_notes, etc.) |
+| `update_ticket_status` | tickets.ts | Status transition + archive on resolve |
+| `archive_ticket` | tickets.ts | Fill verification object, archive to JSONL, warns if evidence empty |
+| `assign_ticket` | tickets.ts | Set assigned_to, handoff_note, increment handoff_count |
+| `create_patch` | patches.ts | Create PA-XXX with suggestion context (what/why/where) |
+| `list_patches` | patches.ts | Filter by service/status, shows assigned_to/claimed_by |
+| `view_patch` | patches.ts | View entry (checks open index, then archive). mode=human for formatted text |
+| `search_patches` | patches.ts | Keyword + tag filter across open index + archive |
+| `update_patch` | patches.ts | Update fields directly on index entry |
 | `update_patch_status` | patches.ts | Status transition + archive on verify |
-| `archive_patch` | patches.ts | Full close workflow: fill verification, rename, move, archive |
+| `archive_patch` | patches.ts | Fill verification object, archive to JSONL, warns if notes empty |
+| `assign_patch` | patches.ts | Set assigned_to, handoff_note, increment handoff_count |
+| `my_queue` | overview.ts | List tickets/patches assigned to agent (prefix matching supported) |
+| `peek` | overview.ts | Read-only view with related entries + project info. No side effects |
+| `pick_up` | overview.ts | Atomic claim — rejects if claimed by another unless force=true |
 | `lookup_tags` | tags.ts | Normalize raw strings via tag-map.json |
 | `validate_failure_class` | tags.ts | Check validity + fuzzy suggestions |
+| `export_training_data` | training.ts | Export archived entries as structured JSONL training records |
 
 ### MANTIS Proxy (6 tools)
 | Tool | Module | MANTIS Procedure |
@@ -193,10 +202,11 @@ Agent (any machine)
 | `list_wrappers` | wrappers.ts | List .sh scripts in agent/wrappers/ |
 | `run_wrapper` | wrappers.ts | Execute a wrapper script with path traversal protection |
 
-### Overview (2 tools)
+### Overview (3 tools)
 | Tool | Module | What It Does |
 |------|--------|-------------|
 | `server_overview` | overview.ts | Single-call aggregate: PM2, disk, tickets, backups, watchdog |
+| `quick_status` | overview.ts | Lightweight: PM2 names + statuses, open ticket/patch counts |
 | `batch_ticket_status` | overview.ts | Batch lookup of TK/PA IDs across open + archive |
 
 ### Files (2 tools)
@@ -215,8 +225,8 @@ Agent (any machine)
 ```
 /Users/minmac.serv/server/          # SERVER_ROOT
 ├── agent/workspace/                # Ticket system (MCP manages this)
-│   ├── tickets/                    # index.json, archive.json, *.md files
-│   ├── patches/                    # index.json, archive.json, *.md files
+│   ├── tickets/                    # index.json, archive.jsonl (no markdown — index is source of truth)
+│   ├── patches/                    # index.json, archive.jsonl (no markdown — index is source of truth)
 │   ├── memory/                     # Shared context files
 │   └── metrics/                    # Time-series data (network.jsonl)
 ├── backups/{service}/              # Per-service backups (outside repos)
@@ -261,7 +271,7 @@ Agent (any machine)
 
 1. **Never bypass MANTIS for things it manages.** Deploy goes through `runner.execute`, not raw `git pull && pm2 restart`. Health checks go through `services.byName`, not custom curl scripts. Exception: `pm2_restart` is a direct restart for quick bounces — use `deploy` for full deploy workflows.
 
-2. **Atomic index writes.** All ticket/patch index updates MUST use `writeIndex()` from `index-manager.ts` (write to `.tmp`, then `rename`). Never `fs.writeFile` directly to `index.json`.
+2. **Hardened index writes.** All ticket/patch index updates MUST use `writeIndex()` from `index-manager.ts` (backup → write .tmp → fsync → validate → atomic rename → restore on failure). Never `fs.writeFile` directly to `index.json`.
 
 3. **Tool module contract.** Every tool module MUST export exactly `tools: Tool[]` and `handleCall(name, args): Promise<CallToolResult>`. No exceptions. server.ts depends on this shape.
 
@@ -364,7 +374,7 @@ const result = await mantisMutation<ResponseType>("procedure.name", {
 
 ### Ticket/Patch Index Operations
 
-Always use `index-manager.ts` for atomic reads/writes:
+Always use `index-manager.ts` for hardened reads/writes:
 
 ```typescript
 import { readIndex, writeIndex, allocateId } from "../lib/index-manager.js";
@@ -374,8 +384,33 @@ import type { TicketIndex } from "../types.js";
 const index = await readIndex<TicketIndex>(TICKET_INDEX);
 const id = allocateId(index, "TK");
 // ... modify index ...
-await writeIndex(TICKET_INDEX, index); // atomic: write .tmp → rename
+await writeIndex(TICKET_INDEX, index); // backup → tmp → fsync → validate → rename
 ```
+
+### Archive Operations
+
+Use `archive.ts` for JSONL archive operations (not direct fs):
+
+```typescript
+import { appendTicketArchive, searchTicketArchive, lookupTicketArchive } from "../lib/archive.js";
+
+// Append on close
+await appendTicketArchive(id, entry);
+
+// Keyword search (returns summaries)
+const matches = await searchTicketArchive("keyword", "service_name");
+
+// ID lookup (returns full entries)
+const map = await lookupTicketArchive(["TK-049", "TK-050"]);
+```
+
+### Agent Handoff Fields
+
+Ticket/patch entries have two assignment fields:
+- `assigned_to` — team queue: `"dev.minimart"`, `"mini"` (who should work this)
+- `claimed_by` — worker identity: `"dev.minimart.sonnet.4.6"` (who IS working this)
+
+Use `assign_ticket`/`assign_patch` for handoffs, `pick_up` for claiming.
 
 ## 11. Common AI Agent Mistakes
 
@@ -391,6 +426,9 @@ await writeIndex(TICKET_INDEX, index); // atomic: write .tmp → rename
 | Use `require()` or CommonJS patterns | Project is ESM (`"type": "module"`) | Use `import`/`export`, `.js` extensions in imports |
 | Forget `.js` extension in relative imports | NodeNext resolution requires explicit extensions | Always: `import { x } from "./lib/thing.js"` |
 | Skip error wrapping in handleCall | Unhandled exceptions crash the transport | Always catch + return `isError: true` |
+| Write markdown files for tickets/patches | Markdown was killed — index entry is sole source of truth | All data lives in index.json entries, no .md files |
+| Use `fs.appendFile` for archive directly | Bypasses migration logic and error handling | Use `appendTicketArchive`/`appendPatchArchive` from `archive.ts` |
+| Confuse `assigned_to` with `claimed_by` | `assigned_to` is the team queue, `claimed_by` is the active worker | Use `assign_ticket` for handoffs, `pick_up` for claiming |
 
 ## 12. Integration Points
 

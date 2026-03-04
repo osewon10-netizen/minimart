@@ -9,7 +9,7 @@ Deep audit checklist for comprehensive health reviews. Two modes based on scope.
 Periodic health check. Run monthly or after a batch of changes.
 
 ### A1. Tool Coverage Inventory
-- [ ] Count tools in code matches count in AGENTS.md tool registry (currently 46)
+- [ ] Count tools in code matches count in AGENTS.md tool registry (currently 53)
 - [ ] Every tool in `server.ts`'s `toolModules[]` has a matching handler
 - [ ] No orphaned tool definitions (defined in module but unreachable from server.ts)
 - [ ] No orphaned handlers (case in switch but no matching tool definition)
@@ -22,10 +22,10 @@ Periodic health check. Run monthly or after a batch of changes.
 
 ### A3. Filesystem State Integrity
 - [ ] `index.json` can be read by `readIndex()` without error (valid JSON, expected shape)
-- [ ] `archive.json` exists and is valid JSON
-- [ ] No orphan ticket/patch files (files on disk not referenced in index or archive)
+- [ ] `archive.jsonl` exists and is valid JSONL (one JSON object per line)
 - [ ] `tag-map.json` and `failure-classes.json` are loadable and well-formed
-- [ ] Atomic write pattern is intact — `writeIndex` still uses tmp-then-rename
+- [ ] Hardened write pattern is intact — `writeIndex` does backup → fsync → validate → rename → restore on failure
+- [ ] No stale `.tmp`, `.bak`, or `.corrupt.*` files lingering (check after healthy operations)
 
 ### A4. Dependency Health
 - [ ] `npm audit` shows no critical/high vulnerabilities
@@ -75,8 +75,9 @@ Comprehensive review. Run quarterly, after incidents, or before major architectu
 - [ ] `grep` pattern in `search_logs` is passed as argument, not shell-expanded
 
 ### A10. Concurrency & Atomicity
-- [ ] Atomic write pattern in `index-manager.ts`: verify `rename` replaces atomically on the target OS (macOS)
+- [ ] Hardened write in `index-manager.ts`: backup → fsync → validate → rename — verify all 5 steps are intact
 - [ ] No TOCTOU race between `readIndex` and `writeIndex` — acceptable for single-process server
+- [ ] `pick_up` atomic claim: verify reject path fires before any mutation when `claimed_by` differs
 - [ ] `log_review` in review.ts uses non-atomic write — acceptable since filenames are unique per review
 - [ ] Memory file writes (`set_context`) are non-atomic — acceptable since topic names are unique
 - [ ] No concurrent PM2 CLI calls that could interfere with each other
@@ -93,15 +94,19 @@ Comprehensive review. Run quarterly, after incidents, or before major architectu
 - [ ] No schema says `required: ["x"]` when the handler has a fallback for missing `x`
 - [ ] No schema omits `required` when the handler would crash on missing args
 - [ ] `description` strings are specific enough for an agent to use without reading source
-- [ ] No duplicate tool names across all 17 modules
+- [ ] No duplicate tool names across all 18 modules
 
 ### A13. Data Flow Tracing
 Trace end-to-end for each critical path:
 
 **Ticket lifecycle:**
-- [ ] `create_ticket` → tag normalization → allocateId → renderMarkdown → writeFile → writeIndex (atomic)
-- [ ] `update_ticket_status` → readIndex → validate transition → rename file → update index → archive if resolved
-- [ ] Verify archive removes entry from `index.json` and adds to `archive.json`
+- [ ] `create_ticket` → tag normalization → allocateId → build entry with detection context → writeIndex (hardened)
+- [ ] `update_ticket` → readIndex → merge fields → writeIndex (evidence, patch_notes, etc.)
+- [ ] `update_ticket_status` → readIndex → validate transition → update index → appendTicketArchive if resolved
+- [ ] `archive_ticket` → populate verification object → appendTicketArchive → remove from index → warns if evidence empty
+- [ ] `assign_ticket` → set assigned_to → clear claimed_by if reassigned → increment handoff_count
+- [ ] `pick_up` → atomic claim check → reject if claimed by other (unless force) → set claimed_by/claimed_at
+- [ ] Verify archive removes entry from `index.json` and appends to `archive.jsonl`
 
 **Deploy lifecycle:**
 - [ ] `deploy_status` → mantisQuery("services.byName") → extract commitsBehind/state

@@ -1,6 +1,6 @@
 # minimart
 
-MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 46 structured tools over HTTP — ticketing, deployments, health monitoring, MANTIS proxy, git operations, file access, network metrics, and local LLM inference.
+MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 53 structured tools over HTTP — ticketing with agent handoffs, deployments, health monitoring, MANTIS proxy, git operations, file access, network metrics, training data export, and local LLM inference.
 
 ## Why This Exists
 
@@ -51,7 +51,7 @@ The server follows a simple three-layer pattern:
 
 **Layer 1 — HTTP entry** (`src/index.ts`): Bare `node:http` server. Two routes: `POST /mcp` (MCP protocol) and `GET /health` (JSON healthcheck). Each MCP request creates a fresh transport + server instance (stateless, no sessions).
 
-**Layer 2 — MCP dispatch** (`src/server.ts`): Registers 17 tool modules. On `tools/list`, returns all 46 tool definitions. On `tools/call`, finds the right module by scanning tool names and delegates.
+**Layer 2 — MCP dispatch** (`src/server.ts`): Registers 18 tool modules. On `tools/list`, returns all 53 tool definitions. On `tools/call`, finds the right module by scanning tool names and delegates.
 
 **Layer 3 — Tool modules** (`src/tools/*.ts`): Each module exports `tools: Tool[]` (MCP definitions) and `handleCall(name, args)` (implementation). Tools talk to MANTIS, PM2, Ollama, git, or the local filesystem.
 
@@ -59,20 +59,24 @@ The server follows a simple three-layer pattern:
 
 | Tool Domain | Backend | How |
 |------------|---------|-----|
-| Tickets & patches | Local filesystem | Atomic JSON index + markdown files |
+| Tickets & patches | Local filesystem | Atomic JSON index (no markdown — index entry is sole source of truth) |
 | Deploys, health, cron, events | MANTIS (localhost:3200) | Raw HTTP fetch to tRPC endpoints |
 | PM2 process data, logs | PM2 CLI | `pm2 jlist`, `pm2 logs`, `grep` |
 | Git operations | git CLI | `git -C <repo> log/diff/status` |
 | Local LLM | Ollama (localhost:11434) | REST API |
 | Service metadata | In-memory registry | Hardcoded in `registry.ts` |
 
-## Tools (46 total)
+## Tools (53 total)
 
-### Ticketing (14)
-- `create_ticket` / `list_tickets` / `view_ticket` / `search_tickets` / `update_ticket_status` / `archive_ticket`
-- `create_patch` / `list_patches` / `view_patch` / `search_patches` / `update_patch_status` / `archive_patch`
+### Ticketing & Handoffs (22)
+- `create_ticket` / `list_tickets` / `view_ticket` / `search_tickets` / `update_ticket` / `update_ticket_status` / `archive_ticket` / `assign_ticket`
+- `create_patch` / `list_patches` / `view_patch` / `search_patches` / `update_patch` / `update_patch_status` / `archive_patch` / `assign_patch`
+- `my_queue` — list tickets/patches assigned to an agent (prefix matching)
+- `peek` — read-only view with related entries + project info
+- `pick_up` — atomic claim with contention rejection (force override with audit trail)
 - `lookup_tags` — normalize raw tag strings via tag-map.json
 - `validate_failure_class` — check validity with fuzzy suggestions
+- `export_training_data` — export archived entries as structured JSONL training records
 
 ### MANTIS Proxy (6)
 - `mantis_events` / `mantis_event_summary` — query event log
@@ -119,8 +123,9 @@ The server follows a simple three-layer pattern:
 - `list_wrappers` — list .sh scripts in agent/wrappers/
 - `run_wrapper` — execute a wrapper script with path traversal protection
 
-### Overview (2)
+### Overview (3)
 - `server_overview` — single-call aggregate: PM2, disk, tickets, backups, watchdog state
+- `quick_status` — lightweight: PM2 names + statuses, open ticket/patch counts
 - `batch_ticket_status` — batch lookup of TK/PA IDs across open + archive
 
 ### Files (2)
@@ -138,16 +143,16 @@ src/
 ├── types.ts              # Shared TypeScript interfaces
 ├── lib/                  # Shared utilities
 │   ├── paths.ts          # All paths, URLs, port config
-│   ├── index-manager.ts  # Atomic index.json read/write
-│   ├── template-renderer.ts  # Ticket/patch markdown generation
+│   ├── index-manager.ts  # Hardened index.json read/write (backup+fsync+validate+rename)
+│   ├── archive.ts        # JSONL archive operations (append, search, lookup)
 │   ├── tag-normalizer.ts     # Tag normalization
 │   ├── failure-validator.ts  # Failure class validation
 │   ├── mantis-client.ts      # HTTP client → MANTIS tRPC
 │   ├── pm2-client.ts         # PM2 CLI wrapper
 │   └── ollama-client.ts      # Ollama REST client
-└── tools/                # 17 tool modules (46 tools total)
-    ├── tickets.ts        # Ticket CRUD + search + archive
-    ├── patches.ts        # Patch CRUD + search + archive
+└── tools/                # 18 tool modules (53 tools total)
+    ├── tickets.ts        # Ticket CRUD + search + archive + assign
+    ├── patches.ts        # Patch CRUD + search + archive + assign
     ├── tags.ts           # Tag normalization
     ├── registry.ts       # Service metadata
     ├── mantis.ts         # MANTIS tRPC proxy
@@ -160,7 +165,8 @@ src/
     ├── git.ts            # Git operations per repo
     ├── ollama.ts         # Local LLM proxy
     ├── wrappers.ts       # Ops script execution
-    ├── overview.ts       # Aggregate status + batch lookups
+    ├── overview.ts       # Aggregate status + batch lookups + handoff queue/claim
+    ├── training.ts       # Training data export from archive
     ├── files.ts          # Scoped file read/write
     └── network.ts        # Network quality metrics
 ```
@@ -233,7 +239,7 @@ MANTIS being down degrades deploy, health, cron, and event tools. PM2, git, tick
 
 **Raw HTTP to MANTIS:** Uses `fetch()` to call MANTIS tRPC endpoints directly instead of importing `@trpc/client`. This avoids version coupling — MANTIS can upgrade tRPC without breaking the MCP server.
 
-**Atomic index writes:** Ticket/patch indexes use write-to-tmp-then-rename to prevent corruption if the process crashes mid-write.
+**Hardened index writes:** Ticket/patch indexes use a 5-step safety pattern: backup current → write to tmp → fsync → validate by re-parsing → atomic rename. On validation failure, the backup is restored and the corrupt file preserved as evidence.
 
 **Deploy safety guard:** The `deploy` tool checks service health via MANTIS before executing. If the service is in CRITICAL state, it refuses the deploy and tells the agent to investigate first.
 
