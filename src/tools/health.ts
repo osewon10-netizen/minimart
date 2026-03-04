@@ -12,11 +12,12 @@ const execFileAsync = promisify(execFile);
 export const tools: Tool[] = [
   {
     name: "pm2_status",
-    description: "Get PM2 process status. Pass service name to filter, or omit for all processes.",
+    description: "Get PM2 process status. Default compact output: name + status + uptime only. Set verbose=true for full details (cpu, memory, restarts, pid).",
     inputSchema: {
       type: "object",
       properties: {
         service: { type: "string", description: "PM2 process name to filter" },
+        verbose: { type: "boolean", description: "Return full details (cpu, memory, pid, restarts). Default: false." },
       },
     },
   },
@@ -88,10 +89,14 @@ async function pm2Status(args: Record<string, unknown>): Promise<CallToolResult>
   try {
     const processes = await pm2List();
     const service = args.service as string | undefined;
+    const verbose = (args.verbose as boolean | undefined) ?? false;
     const filtered = service
       ? processes.filter((p) => p.name === service || p.name.includes(service))
       : processes;
-    return { content: [{ type: "text", text: JSON.stringify(filtered, null, 2) }] };
+    const output = verbose
+      ? filtered
+      : filtered.map((p) => ({ name: p.name, status: p.status, uptime: p.uptime }));
+    return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { content: [{ type: "text", text: `PM2 error: ${msg}` }], isError: true };

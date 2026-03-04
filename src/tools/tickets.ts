@@ -4,7 +4,6 @@ import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   TICKET_DIR,
   TICKET_INDEX,
-  TICKET_ARCHIVE,
   TICKET_RESOLVED_DIR,
 } from "../lib/paths.js";
 import {
@@ -13,6 +12,7 @@ import {
   allocateId,
   generateFilename,
 } from "../lib/index-manager.js";
+import { searchTicketArchive, appendTicketArchive } from "../lib/archive.js";
 import { normalizeTags } from "../lib/tag-normalizer.js";
 import { validateFailureClass } from "../lib/failure-validator.js";
 import { renderTicketMarkdown } from "../lib/template-renderer.js";
@@ -23,22 +23,29 @@ import type { TicketIndex, TicketEntry } from "../types.js";
 export const tools: Tool[] = [
   {
     name: "list_tickets",
-    description: "List tickets from the index, optionally filtered by service and/or status.",
+    description: "List tickets from the index, optionally filtered by service and/or status. status accepts a string or array of strings.",
     inputSchema: {
       type: "object",
       properties: {
         service: { type: "string", description: "Filter by service name" },
-        status: { type: "string", description: "Filter by status (open, in-progress, patched, resolved)" },
+        status: {
+          description: "Filter by status — string or array. e.g. 'open' or ['open','patched']",
+          oneOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" } },
+          ],
+        },
       },
     },
   },
   {
     name: "view_ticket",
-    description: "Read the full markdown content of a ticket by ID.",
+    description: "Read the full markdown content of a ticket by ID. Use mode='summary' for metadata + patch notes + verification only (skips detection boilerplate, cuts tokens ~50%).",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "Ticket ID, e.g. TK-049" },
+        mode: { type: "string", enum: ["full", "summary"], description: "Default: full. summary returns metadata + patch notes + verification only." },
       },
       required: ["id"],
     },
@@ -128,13 +135,16 @@ export const tools: Tool[] = [
 
 async function listTickets(args: Record<string, unknown>): Promise<CallToolResult> {
   const service = args.service as string | undefined;
-  const status = args.status as string | undefined;
+  const statusRaw = args.status as string | string[] | undefined;
+  const statusFilter = statusRaw
+    ? Array.isArray(statusRaw) ? statusRaw : [statusRaw]
+    : undefined;
 
   const index = await readIndex<TicketIndex>(TICKET_INDEX);
   let entries = Object.entries(index.tickets);
 
   if (service) entries = entries.filter(([, e]) => e.service === service);
-  if (status) entries = entries.filter(([, e]) => e.status === status);
+  if (statusFilter) entries = entries.filter(([, e]) => statusFilter.includes(e.status));
 
   const result = entries.map(([id, e]) => ({
     id,
@@ -151,6 +161,7 @@ async function listTickets(args: Record<string, unknown>): Promise<CallToolResul
 
 async function viewTicket(args: Record<string, unknown>): Promise<CallToolResult> {
   const id = args.id as string;
+  const mode = (args.mode as string | undefined) ?? "full";
 
   const index = await readIndex<TicketIndex>(TICKET_INDEX);
   const entry = index.tickets[id];
@@ -159,12 +170,27 @@ async function viewTicket(args: Record<string, unknown>): Promise<CallToolResult
   }
 
   const filePath = path.join(TICKET_DIR, entry.file);
+  let content: string;
   try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return { content: [{ type: "text", text: content }] };
+    content = await fs.readFile(filePath, "utf-8");
   } catch {
     return { content: [{ type: "text", text: `File not found: ${entry.file}` }], isError: true };
   }
+
+  if (mode === "summary") {
+    // Extract: metadata table + Patch Notes section + Verification section
+    const metaMatch = content.match(/^(##.*?)\n---/s);
+    const patchNotesMatch = content.match(/## Patch Notes\n([\s\S]*?)(?=\n---|\n## |$)/);
+    const verificationMatch = content.match(/## Verification\n([\s\S]*?)$/);
+    const summary = [
+      metaMatch ? metaMatch[0] : `[${id}]`,
+      patchNotesMatch ? `## Patch Notes\n${patchNotesMatch[1].trim()}` : "",
+      verificationMatch ? `## Verification\n${verificationMatch[1].trim()}` : "",
+    ].filter(Boolean).join("\n\n---\n\n");
+    return { content: [{ type: "text", text: summary }] };
+  }
+
+  return { content: [{ type: "text", text: content }] };
 }
 
 async function createTicket(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -255,12 +281,6 @@ async function searchTickets(args: Record<string, unknown>): Promise<CallToolRes
   const query = (args.query as string).toLowerCase();
   const serviceFilter = args.service as string | undefined;
 
-  // Search both open index and archive
-  const sources: Array<{ label: string; path: string }> = [
-    { label: "open", path: TICKET_INDEX },
-    { label: "archive", path: TICKET_ARCHIVE },
-  ];
-
   const matches: Array<{
     id: string;
     source: string;
@@ -272,14 +292,9 @@ async function searchTickets(args: Record<string, unknown>): Promise<CallToolRes
     tags: string[];
   }> = [];
 
-  for (const src of sources) {
-    let index: TicketIndex;
-    try {
-      index = await readIndex<TicketIndex>(src.path);
-    } catch {
-      continue; // archive may not exist yet
-    }
-
+  // Search open index
+  try {
+    const index = await readIndex<TicketIndex>(TICKET_INDEX);
     for (const [id, entry] of Object.entries(index.tickets)) {
       if (serviceFilter && entry.service !== serviceFilter) continue;
 
@@ -295,7 +310,7 @@ async function searchTickets(args: Record<string, unknown>): Promise<CallToolRes
       if (searchable.includes(query)) {
         matches.push({
           id,
-          source: src.label,
+          source: "open",
           service: entry.service,
           summary: entry.summary,
           severity: entry.severity,
@@ -305,7 +320,13 @@ async function searchTickets(args: Record<string, unknown>): Promise<CallToolRes
         });
       }
     }
+  } catch {
+    // index may not exist yet
   }
+
+  // Search archive (JSONL)
+  const archiveMatches = await searchTicketArchive(query, serviceFilter);
+  matches.push(...archiveMatches);
 
   return {
     content: [{
@@ -479,15 +500,8 @@ async function updateTicketStatus(args: Record<string, unknown>): Promise<CallTo
       outcome: outcome ?? entry.outcome,
     };
 
-    // Read/update archive
-    let archive: TicketIndex;
-    try {
-      archive = await readIndex<TicketIndex>(TICKET_ARCHIVE);
-    } catch {
-      archive = { next_id: 0, tickets: {} };
-    }
-    archive.tickets[id] = resolvedEntry;
-    await writeIndex(TICKET_ARCHIVE, archive);
+    // Append to JSONL archive
+    await appendTicketArchive(id, resolvedEntry);
 
     // Remove from main index
     const { [id]: _removed, ...remainingTickets } = index.tickets;
@@ -551,14 +565,8 @@ async function archiveTicket(args: Record<string, unknown>): Promise<CallToolRes
     outcome,
   };
 
-  let archive: TicketIndex;
-  try {
-    archive = await readIndex<TicketIndex>(TICKET_ARCHIVE);
-  } catch {
-    archive = { next_id: 0, tickets: {} };
-  }
-  archive.tickets[id] = resolvedEntry;
-  await writeIndex(TICKET_ARCHIVE, archive);
+  // Append to JSONL archive
+  await appendTicketArchive(id, resolvedEntry);
 
   // Remove from open index
   const { [id]: _removed, ...remainingTickets } = index.tickets;

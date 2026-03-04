@@ -4,7 +4,6 @@ import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   PATCH_DIR,
   PATCH_INDEX,
-  PATCH_ARCHIVE,
   PATCH_VERIFIED_DIR,
 } from "../lib/paths.js";
 import {
@@ -13,6 +12,7 @@ import {
   allocateId,
   generateFilename,
 } from "../lib/index-manager.js";
+import { searchPatchArchive, appendPatchArchive } from "../lib/archive.js";
 import { normalizeTags } from "../lib/tag-normalizer.js";
 import { validateFailureClass } from "../lib/failure-validator.js";
 import { renderPatchMarkdown } from "../lib/template-renderer.js";
@@ -23,22 +23,29 @@ import type { PatchIndex, PatchEntry } from "../types.js";
 export const tools: Tool[] = [
   {
     name: "list_patches",
-    description: "List patches from the index, optionally filtered by service and/or status.",
+    description: "List patches from the index, optionally filtered by service and/or status. status accepts a string or array of strings.",
     inputSchema: {
       type: "object",
       properties: {
         service: { type: "string", description: "Filter by service name" },
-        status: { type: "string", description: "Filter by status (open, in-review, applied, verified, rejected)" },
+        status: {
+          description: "Filter by status — string or array. e.g. 'open' or ['open','applied']",
+          oneOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" } },
+          ],
+        },
       },
     },
   },
   {
     name: "view_patch",
-    description: "Read the full markdown content of a patch by ID.",
+    description: "Read the full markdown content of a patch by ID. Use mode='summary' for metadata + applied notes + verification only (skips suggestion boilerplate, cuts tokens ~50%).",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "Patch ID, e.g. PA-042" },
+        mode: { type: "string", enum: ["full", "summary"], description: "Default: full. summary returns metadata + applied notes + verification only." },
       },
       required: ["id"],
     },
@@ -137,13 +144,16 @@ export const tools: Tool[] = [
 
 async function listPatches(args: Record<string, unknown>): Promise<CallToolResult> {
   const service = args.service as string | undefined;
-  const status = args.status as string | undefined;
+  const statusRaw = args.status as string | string[] | undefined;
+  const statusFilter = statusRaw
+    ? Array.isArray(statusRaw) ? statusRaw : [statusRaw]
+    : undefined;
 
   const index = await readIndex<PatchIndex>(PATCH_INDEX);
   let entries = Object.entries(index.patches);
 
   if (service) entries = entries.filter(([, e]) => e.service === service);
-  if (status) entries = entries.filter(([, e]) => e.status === status);
+  if (statusFilter) entries = entries.filter(([, e]) => statusFilter.includes(e.status));
 
   const result = entries.map(([id, e]) => ({
     id,
@@ -161,6 +171,7 @@ async function listPatches(args: Record<string, unknown>): Promise<CallToolResul
 
 async function viewPatch(args: Record<string, unknown>): Promise<CallToolResult> {
   const id = args.id as string;
+  const mode = (args.mode as string | undefined) ?? "full";
 
   const index = await readIndex<PatchIndex>(PATCH_INDEX);
   const entry = index.patches[id];
@@ -169,12 +180,26 @@ async function viewPatch(args: Record<string, unknown>): Promise<CallToolResult>
   }
 
   const filePath = path.join(PATCH_DIR, entry.file);
+  let content: string;
   try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return { content: [{ type: "text", text: content }] };
+    content = await fs.readFile(filePath, "utf-8");
   } catch {
     return { content: [{ type: "text", text: `File not found: ${entry.file}` }], isError: true };
   }
+
+  if (mode === "summary") {
+    const metaMatch = content.match(/^(##.*?)\n---/s);
+    const appliedMatch = content.match(/## Applied\n([\s\S]*?)(?=\n---|\n## |$)/);
+    const verificationMatch = content.match(/## Verification\n([\s\S]*?)$/);
+    const summary = [
+      metaMatch ? metaMatch[0] : `[${id}]`,
+      appliedMatch ? `## Applied\n${appliedMatch[1].trim()}` : "",
+      verificationMatch ? `## Verification\n${verificationMatch[1].trim()}` : "",
+    ].filter(Boolean).join("\n\n---\n\n");
+    return { content: [{ type: "text", text: summary }] };
+  }
+
+  return { content: [{ type: "text", text: content }] };
 }
 
 async function createPatch(args: Record<string, unknown>): Promise<CallToolResult> {
@@ -266,11 +291,6 @@ async function searchPatches(args: Record<string, unknown>): Promise<CallToolRes
   const query = (args.query as string).toLowerCase();
   const serviceFilter = args.service as string | undefined;
 
-  const sources: Array<{ label: string; path: string }> = [
-    { label: "open", path: PATCH_INDEX },
-    { label: "archive", path: PATCH_ARCHIVE },
-  ];
-
   const matches: Array<{
     id: string;
     source: string;
@@ -283,14 +303,9 @@ async function searchPatches(args: Record<string, unknown>): Promise<CallToolRes
     tags: string[];
   }> = [];
 
-  for (const src of sources) {
-    let index: PatchIndex;
-    try {
-      index = await readIndex<PatchIndex>(src.path);
-    } catch {
-      continue;
-    }
-
+  // Search open index
+  try {
+    const index = await readIndex<PatchIndex>(PATCH_INDEX);
     for (const [id, entry] of Object.entries(index.patches)) {
       if (serviceFilter && entry.service !== serviceFilter) continue;
 
@@ -307,7 +322,7 @@ async function searchPatches(args: Record<string, unknown>): Promise<CallToolRes
       if (searchable.includes(query)) {
         matches.push({
           id,
-          source: src.label,
+          source: "open",
           service: entry.service,
           summary: entry.summary,
           priority: entry.priority,
@@ -318,7 +333,13 @@ async function searchPatches(args: Record<string, unknown>): Promise<CallToolRes
         });
       }
     }
+  } catch {
+    // index may not exist yet
   }
+
+  // Search archive (JSONL)
+  const archiveMatches = await searchPatchArchive(query, serviceFilter);
+  matches.push(...archiveMatches);
 
   return {
     content: [{
@@ -487,15 +508,8 @@ async function updatePatchStatus(args: Record<string, unknown>): Promise<CallToo
       verified_by: verifiedBy,
     };
 
-    // Read/update archive
-    let archive: PatchIndex;
-    try {
-      archive = await readIndex<PatchIndex>(PATCH_ARCHIVE);
-    } catch {
-      archive = { next_id: 0, patches: {} };
-    }
-    archive.patches[id] = verifiedEntry;
-    await writeIndex(PATCH_ARCHIVE, archive);
+    // Append to JSONL archive
+    await appendPatchArchive(id, verifiedEntry);
 
     // Remove from main index
     const { [id]: _removed, ...remainingPatches } = index.patches;
@@ -562,14 +576,8 @@ async function archivePatch(args: Record<string, unknown>): Promise<CallToolResu
     verified_by: verifiedBy,
   };
 
-  let archive: PatchIndex;
-  try {
-    archive = await readIndex<PatchIndex>(PATCH_ARCHIVE);
-  } catch {
-    archive = { next_id: 0, patches: {} };
-  }
-  archive.patches[id] = verifiedEntry;
-  await writeIndex(PATCH_ARCHIVE, archive);
+  // Append to JSONL archive
+  await appendPatchArchive(id, verifiedEntry);
 
   // Remove from open index
   const { [id]: _removed, ...remainingPatches } = index.patches;

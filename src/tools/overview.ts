@@ -8,10 +8,9 @@ import { readIndex } from "../lib/index-manager.js";
 import {
   TICKET_INDEX,
   PATCH_INDEX,
-  TICKET_ARCHIVE,
-  PATCH_ARCHIVE,
   BACKUP_DIR,
 } from "../lib/paths.js";
+import { lookupTicketArchive, lookupPatchArchive } from "../lib/archive.js";
 import type { TicketIndex, PatchIndex } from "../types.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,6 +22,15 @@ export const tools: Tool[] = [
     name: "server_overview",
     description:
       "Single-call aggregate status: PM2 processes, disk usage, open ticket/patch counts, last backup age per service, worst watchdog state, MANTIS reachability.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "quick_status",
+    description:
+      "Lightweight health glance: PM2 process names + statuses, open ticket count, open patch count. Skips disk, backup, watchdog, and MANTIS queries. Use server_overview for full diagnostics.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -158,6 +166,26 @@ async function serverOverview(): Promise<CallToolResult> {
   return { content: [{ type: "text", text: JSON.stringify(overview, null, 2) }] };
 }
 
+async function quickStatus(): Promise<CallToolResult> {
+  const [pm2Result, ticketsResult, patchesResult] = await Promise.allSettled([
+    pm2List(),
+    readIndex<TicketIndex>(TICKET_INDEX),
+    readIndex<PatchIndex>(PATCH_INDEX),
+  ]);
+
+  const pm2 = extractSettled(pm2Result);
+  const tickets = extractSettled(ticketsResult);
+  const patches = extractSettled(patchesResult);
+
+  const result = {
+    pm2: pm2?.map((p) => ({ name: p.name, status: p.status })) ?? null,
+    tickets: { open: tickets ? Object.keys(tickets.tickets).length : null },
+    patches: { open: patches ? Object.keys(patches.patches).length : null },
+  };
+
+  return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+}
+
 async function batchTicketStatus(args: Record<string, unknown>): Promise<CallToolResult> {
   const ids = args.ids as string[];
   if (!ids || ids.length === 0) {
@@ -167,18 +195,18 @@ async function batchTicketStatus(args: Record<string, unknown>): Promise<CallToo
   const tkIds = ids.filter((id) => id.startsWith("TK-"));
   const paIds = ids.filter((id) => id.startsWith("PA-"));
 
-  // Read all indexes in parallel
-  const [ticketIdx, ticketArch, patchIdx, patchArch] = await Promise.allSettled([
+  // Read open indexes + archive lookups in parallel
+  const [ticketIdx, patchIdx, ticketArchMap, patchArchMap] = await Promise.allSettled([
     readIndex<TicketIndex>(TICKET_INDEX),
-    readIndex<TicketIndex>(TICKET_ARCHIVE),
     readIndex<PatchIndex>(PATCH_INDEX),
-    readIndex<PatchIndex>(PATCH_ARCHIVE),
+    lookupTicketArchive(tkIds),
+    lookupPatchArchive(paIds),
   ]);
 
   const tIdx = extractSettled(ticketIdx);
-  const tArch = extractSettled(ticketArch);
   const pIdx = extractSettled(patchIdx);
-  const pArch = extractSettled(patchArch);
+  const tArch = extractSettled(ticketArchMap);
+  const pArch = extractSettled(patchArchMap);
 
   const results: Array<{
     id: string;
@@ -192,7 +220,7 @@ async function batchTicketStatus(args: Record<string, unknown>): Promise<CallToo
 
   for (const id of tkIds) {
     const open = tIdx?.tickets[id];
-    const archived = tArch?.tickets[id];
+    const archived = tArch?.get(id);
     const entry = open ?? archived;
     results.push({
       id,
@@ -207,7 +235,7 @@ async function batchTicketStatus(args: Record<string, unknown>): Promise<CallToo
 
   for (const id of paIds) {
     const open = pIdx?.patches[id];
-    const archived = pArch?.patches[id];
+    const archived = pArch?.get(id);
     const entry = open ?? archived;
     results.push({
       id,
@@ -244,6 +272,7 @@ async function batchTicketStatus(args: Record<string, unknown>): Promise<CallToo
 export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "server_overview": return serverOverview();
+    case "quick_status": return quickStatus();
     case "batch_ticket_status": return batchTicketStatus(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
