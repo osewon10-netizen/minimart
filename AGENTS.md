@@ -2,7 +2,7 @@
 
 ## 1. Identity
 
-**What:** MCP (Model Context Protocol) server exposing 53 structured tools over HTTP for multi-agent ops across 4 service repos on Mini.
+**What:** MCP (Model Context Protocol) server exposing 54 structured tools over HTTP for multi-agent ops across 4 service repos on Mini. Also runs a scoped instance (`minimart_express`) on port 6975 with 15 read-only tools for the local Ollama agent.
 
 **Who uses it:** Claude Code (Opus/Sonnet), Codex, Gemini CLI, OpenClaw — any agent that speaks MCP over HTTP.
 
@@ -19,8 +19,10 @@
 | Module system | ESM (`"type": "module"` in package.json) |
 | Target | ES2022, NodeNext module resolution |
 | Entry point | `build/index.js` (compiled from `src/index.ts`) |
-| Process manager | PM2 (`ecosystem.config.cjs`) |
-| Port | 6974 (hardcoded in `src/lib/paths.ts`) |
+| Express entry | `build/index-express.js` (compiled from `src/index-express.ts`) |
+| Process manager | PM2 (`ecosystem.config.cjs`) — two processes: minimart, minimart_express |
+| Port (main) | 6974 (hardcoded in `src/lib/paths.ts`) |
+| Port (express) | 6975, localhost-only (15 read-only tools for Ollama agent) |
 | Strict mode | Yes (`strict: true` in tsconfig) |
 
 ## 3. File Map
@@ -29,16 +31,17 @@
 mini_cp_server/
 ├── package.json              # Node project, deps: @modelcontextprotocol/sdk, superjson
 ├── tsconfig.json             # ES2022 target, NodeNext, strict, sourceMap
-├── ecosystem.config.cjs      # PM2 config — name: minimart, 256M max
+├── ecosystem.config.cjs      # PM2 config — minimart (256M), minimart_express (128M)
 ├── .gitignore                # node_modules/, build/, *.tsbuildinfo, .env
 │
 ├── src/
-│   ├── index.ts              # HTTP entry — POST /mcp, GET /health
-│   ├── server.ts             # MCP server factory — registers 18 tool modules
+│   ├── index.ts              # HTTP entry — POST /mcp, GET /health (port 6974)
+│   ├── index-express.ts      # Scoped HTTP entry — 15 tools, localhost:6975, concurrency guard
+│   ├── server.ts             # MCP server factory — registers 18 tool modules, optional allowlist
 │   ├── types.ts              # All shared interfaces (Ticket, Patch, MANTIS, etc.)
 │   │
 │   ├── lib/                  # Shared utilities (no tools here)
-│   │   ├── paths.ts          # All filesystem paths, URLs, port — single source of truth
+│   │   ├── paths.ts          # All filesystem paths, URLs, ports, getFileWorkspace() — single source of truth
 │   │   ├── index-manager.ts  # Hardened index.json read/write (backup+fsync+validate+rename)
 │   │   ├── archive.ts        # JSONL archive operations (append, search, lookup, migration)
 │   │   ├── tag-normalizer.ts     # Tag-map.json loader + normalizer
@@ -58,7 +61,7 @@ mini_cp_server/
 │       ├── deploy.ts         # 3 tools: deploy_status, deploy, rollback
 │       ├── review.ts         # 2 tools: get_checklist, log_review
 │       ├── cron.ts           # 3 tools: list_crons, cron_log, trigger_cron
-│       ├── memory.ts         # 3 tools: get_context, set_context, get_project_info
+│       ├── memory.ts         # 4 tools: get_context, set_context, get_ticketing_guide, get_project_info
 │       ├── git.ts            # 3 tools: git_log, git_diff, git_status
 │       ├── ollama.ts         # 2 tools: ollama_generate, ollama_models
 │       ├── wrappers.ts       # 2 tools: list_wrappers, run_wrapper
@@ -309,6 +312,10 @@ pm2 logs minimart --lines 50
 curl http://localhost:6974/health
 # → {"status":"ok","service":"minimart"}
 
+# Health check (express — localhost only)
+curl http://127.0.0.1:6975/health
+# → {"status":"ok","service":"minimart_express"}
+
 # Test MCP endpoint (list tools)
 curl -X POST http://localhost:6974/mcp \
   -H "Content-Type: application/json" \
@@ -477,16 +484,39 @@ When tests are added, they should cover:
 
 No other runtime dependencies. All other functionality uses Node.js built-ins (`node:http`, `node:fs/promises`, `node:child_process`, `node:path`, `node:os`, `node:util`).
 
-## 15. Keep These In Sync
+## 15. minimart_express (Scoped Server for Ollama)
+
+A second MCP server instance for the local Ollama agent (Qwen3 4B). Same codebase, same build — parameterized via `ServerConfig.allowedTools`.
+
+| Key | Value |
+|-----|-------|
+| Port | 6975, localhost only (`127.0.0.1`) |
+| PM2 process | `minimart_express` |
+| Workspace | `/server/agent/ollama/` (via `MINIMART_FILE_WORKSPACE` env var) |
+| Tools | 15 (read-only + file ops scoped to ollama workspace) |
+| Concurrency | Max 4 concurrent requests (429 if exceeded) |
+
+**Allowed tools:** `file_read`, `file_write`, `ollama_generate`, `ollama_models`, `service_logs`, `search_logs`, `pm2_status`, `backup_status`, `service_health`, `disk_usage`, `git_log`, `git_diff`, `git_status`, `service_registry`, `get_checklist`
+
+**Blocked:** All ticket/patch CRUD, deploy, rollback, pm2_restart, run_wrapper, mantis mutations, set_context, get_context, overview tools, network_quality, export_training_data, cron tools
+
+**Hardening:**
+- Allowlist validated against full tool registry on boot (crashes on typo/rename)
+- `dispatchTool` fails closed — unknown tools get `"Tool not available on this server"` with no fallback
+- `file_read`/`file_write` scoped to `/server/agent/ollama/` via `getFileWorkspace()` + `resolveSafe()`
+- `search_logs` output capped at 100KB
+
+## 16. Keep These In Sync
 
 If you change any of these, update the corresponding counterparts:
 
 | What Changed | Also Update |
 |-------------|-------------|
-| Added/removed a tool | `server.ts` toolModules[], this AGENTS.md tool registry |
+| Added/removed a tool | `server.ts` toolModules[], this AGENTS.md tool registry, express allowlist if applicable |
 | Changed a filesystem path | `paths.ts` (single source of truth) |
 | Changed a MANTIS procedure name | `mantis-client.ts` callers + verify against MANTIS router |
 | Updated a checklist filename | `review.ts` CHECKLIST_MAP, `registry.ts` SERVICES array |
-| Changed the port | `paths.ts` MCP_PORT, `ecosystem.config.cjs` if applicable |
+| Changed the port | `paths.ts` MCP_PORT/EXPRESS_MCP_PORT, `ecosystem.config.cjs` if applicable |
 | Added a new service | `paths.ts` SERVICE_REPOS, `registry.ts` SERVICES array |
 | Changed PM2 process name | `ecosystem.config.cjs`, any PM2 CLI references |
+| Renamed a tool | Check `index-express.ts` ALLOWED_TOOLS — startup validation will catch mismatches |

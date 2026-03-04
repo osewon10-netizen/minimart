@@ -53,14 +53,30 @@ const toolModules: ToolModule[] = [
   trainingMod,
 ];
 
-function getAllToolDefinitions(): Tool[] {
-  return toolModules.flatMap((m) => m.tools);
+export interface ServerConfig {
+  name?: string;
+  allowedTools?: Set<string>;
+}
+
+function getAllToolDefinitions(allowed?: Set<string>): Tool[] {
+  const all = toolModules.flatMap((m) => m.tools);
+  if (!allowed) return all;
+  return all.filter((t) => allowed.has(t.name));
 }
 
 async function dispatchTool(
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  allowed?: Set<string>
 ): Promise<CallToolResult> {
+  // Fail closed: if allowlist is set and tool isn't in it, reject immediately
+  if (allowed && !allowed.has(name)) {
+    return {
+      content: [{ type: "text", text: `Tool not available on this server: ${name}` }],
+      isError: true,
+    };
+  }
+
   for (const mod of toolModules) {
     if (mod.tools.some((t) => t.name === name)) {
       return mod.handleCall(name, args);
@@ -72,19 +88,34 @@ async function dispatchTool(
   };
 }
 
-export function createServer(): Server {
+/**
+ * Validate that every name in the allowlist exists in the full tool registry.
+ * Throws on startup if any name doesn't match (catches typos and renames).
+ */
+export function validateAllowlist(allowed: Set<string>): void {
+  const allNames = new Set(toolModules.flatMap((m) => m.tools).map((t) => t.name));
+  const bad = [...allowed].filter((name) => !allNames.has(name));
+  if (bad.length > 0) {
+    throw new Error(`Allowlist contains unknown tool names: ${bad.join(", ")}`);
+  }
+}
+
+export function createServer(config?: ServerConfig): Server {
+  const serverName = config?.name ?? "minimart";
+  const allowed = config?.allowedTools;
+
   const server = new Server(
-    { name: "minimart", version: "1.0.0" },
+    { name: serverName, version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools: getAllToolDefinitions() };
+    return { tools: getAllToolDefinitions(allowed) };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
-    return await dispatchTool(name, (args ?? {}) as Record<string, unknown>);
+    return await dispatchTool(name, (args ?? {}) as Record<string, unknown>, allowed);
   });
 
   return server;

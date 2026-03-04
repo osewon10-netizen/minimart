@@ -6,6 +6,7 @@ import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { pm2Logs } from "../lib/pm2-client.js";
 
 const execFileAsync = promisify(execFile);
+const MAX_SEARCH_BYTES = 100 * 1024; // 100KB cap on search_logs output
 
 export const tools: Tool[] = [
   {
@@ -54,7 +55,11 @@ async function searchLogs(args: Record<string, unknown>): Promise<CallToolResult
       ["-i", "--line-number", pattern, outLog, errLog],
       { timeout: 15000 }
     );
-    return { content: [{ type: "text", text: stdout || "(no matches)" }] };
+    let output = stdout || "(no matches)";
+    if (Buffer.byteLength(output, "utf-8") > MAX_SEARCH_BYTES) {
+      output = output.slice(0, MAX_SEARCH_BYTES) + "\n...(truncated at 100KB)";
+    }
+    return { content: [{ type: "text", text: output }] };
   } catch (err: unknown) {
     // grep exits 1 when no matches — that's fine
     const execErr = err as { code?: number; stdout?: string; message?: string };

@@ -50,5 +50,17 @@ export const MANTIS_HEALTH_URL = "http://localhost:3200/api/health";
 // Ollama
 export const OLLAMA_URL = "http://localhost:11434";
 
+// Ollama agent workspace
+export const OLLAMA_WORKSPACE = `${SERVER_ROOT}/agent/ollama`;
+export const OLLAMA_TASKS = `${OLLAMA_WORKSPACE}/tasks`;
+export const OLLAMA_RESULTS = `${OLLAMA_WORKSPACE}/results`;
+export const OLLAMA_MEMORY = `${OLLAMA_WORKSPACE}/memory`;
+
 // MCP server config
 export const MCP_PORT = 6974;
+export const EXPRESS_MCP_PORT = 6975;
+
+// Runtime-resolvable file workspace (env override for express server)
+export function getFileWorkspace(): string {
+  return process.env.MINIMART_FILE_WORKSPACE ?? AGENT_WORKSPACE;
+}

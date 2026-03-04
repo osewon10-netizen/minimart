@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { AGENT_WORKSPACE } from "../lib/paths.js";
+import { getFileWorkspace } from "../lib/paths.js";
 
 const MAX_READ_BYTES = 100 * 1024;  // 100KB
 const MAX_WRITE_BYTES = 1024 * 1024; // 1MB
@@ -48,6 +48,8 @@ export const tools: Tool[] = [
 // ─── Boundary Validation ────────────────────────────────────────────
 
 async function resolveSafe(userPath: string): Promise<string> {
+  const workspace = getFileWorkspace();
+
   // Reject absolute paths
   if (path.isAbsolute(userPath)) {
     throw new Error("Path must be relative to agent/workspace/");
@@ -57,17 +59,17 @@ async function resolveSafe(userPath: string): Promise<string> {
     throw new Error("Path traversal (..) is not allowed");
   }
 
-  const resolved = path.resolve(AGENT_WORKSPACE, userPath);
+  const resolved = path.resolve(workspace, userPath);
 
   // Must stay within boundary after resolution
-  if (!resolved.startsWith(AGENT_WORKSPACE)) {
+  if (!resolved.startsWith(workspace)) {
     throw new Error("Path resolves outside agent/workspace/ boundary");
   }
 
   // Check symlink doesn't escape (for existing paths)
   try {
     const real = await fs.realpath(resolved);
-    if (!real.startsWith(AGENT_WORKSPACE)) {
+    if (!real.startsWith(workspace)) {
       throw new Error("Symlink target is outside agent/workspace/ boundary");
     }
   } catch (err: unknown) {
