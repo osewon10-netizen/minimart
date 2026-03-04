@@ -1,4 +1,4 @@
-# AGENTS.md — mini-mart
+# AGENTS.md — minimart
 
 ## 1. Identity
 
@@ -29,7 +29,7 @@
 mini_cp_server/
 ├── package.json              # Node project, deps: @modelcontextprotocol/sdk, superjson
 ├── tsconfig.json             # ES2022 target, NodeNext, strict, sourceMap
-├── ecosystem.config.cjs      # PM2 config — name: mini-mart, 256M max
+├── ecosystem.config.cjs      # PM2 config — name: minimart, 256M max
 ├── .gitignore                # node_modules/, build/, *.tsbuildinfo, .env
 │
 ├── src/
@@ -234,7 +234,7 @@ Agent (any machine)
 │   ├── maggots/repo/               # Git repo (note: repo/ subdir)
 │   └── sillage/                    # Git repo (no subdir)
 ├── mantis/                         # MANTIS repo (directly at root)
-├── mini_mart/                      # This MCP server repo
+├── minimart/                      # This MCP server repo
 └── state/                          # Runtime state
 ```
 
@@ -284,19 +284,19 @@ npm run dev
 
 # Start server locally
 npm start
-# → mini-mart listening on port 6974
+# → minimart listening on port 6974
 
 # Type check only (no emit)
 npx tsc --noEmit
 
 # PM2 deploy (on Mini)
 pm2 start ecosystem.config.cjs
-pm2 restart mini-mart
-pm2 logs mini-mart --lines 50
+pm2 restart minimart
+pm2 logs minimart --lines 50
 
 # Health check
 curl http://localhost:6974/health
-# → {"status":"ok","service":"mini-mart"}
+# → {"status":"ok","service":"minimart"}
 
 # Test MCP endpoint (list tools)
 curl -X POST http://localhost:6974/mcp \

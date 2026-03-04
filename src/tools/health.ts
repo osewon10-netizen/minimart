@@ -75,7 +75,7 @@ export const tools: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        service: { type: "string", description: "PM2 process name, e.g. mini-mart, hobby_bot" },
+        service: { type: "string", description: "PM2 process name, e.g. minimart, hobby_bot" },
       },
       required: ["service"],
     },

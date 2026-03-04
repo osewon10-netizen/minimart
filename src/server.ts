@@ -72,7 +72,7 @@ async function dispatchTool(
 
 export function createServer(): Server {
   const server = new Server(
-    { name: "mini-mart", version: "1.0.0" },
+    { name: "minimart", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
 

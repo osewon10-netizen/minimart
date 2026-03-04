@@ -1,4 +1,4 @@
-# mini-mart
+# minimart
 
 MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 46 structured tools over HTTP — ticketing, deployments, health monitoring, MANTIS proxy, git operations, file access, network metrics, and local LLM inference.
 
@@ -7,8 +7,8 @@ MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastruc
 Multiple AI agents (Claude Code, Codex, Gemini CLI, OpenClaw) need structured access to the same infrastructure. Instead of each agent implementing its own SSH commands and file parsing, this server provides a single, typed tool interface over MCP. Dev rig agents reach it via SSH tunnel (forwarded to localhost); agents on Mini hit it locally.
 
 ```
-Dev rig agents ──── SSH tunnel → localhost:16974 ──→ mini-mart
-Mini-side agents ── localhost:6974 ─────────────────→ mini-mart
+Dev rig agents ──── SSH tunnel → localhost:16974 ──→ minimart
+Mini-side agents ── localhost:6974 ─────────────────→ minimart
                                                         │
                                                         ├─→ MANTIS (localhost:3200)
                                                         ├─→ PM2 CLI
@@ -28,11 +28,11 @@ npm run build
 
 # Start
 npm start
-# → mini-mart listening on port 6974
+# → minimart listening on port 6974
 
 # Health check
 curl http://localhost:6974/health
-# → {"status":"ok","service":"mini-mart"}
+# → {"status":"ok","service":"minimart"}
 ```
 
 ## Stack
@@ -193,26 +193,26 @@ Runs on Mac Mini under PM2:
 ```bash
 # Start/restart
 pm2 start ecosystem.config.cjs
-pm2 restart mini-mart
+pm2 restart minimart
 
 # View logs
-pm2 logs mini-mart --lines 50
+pm2 logs minimart --lines 50
 
 # Monitor
 pm2 monit
 ```
 
-PM2 config: 256M memory limit, auto-restart on crash, logs to `/Users/minmac.serv/server/logs/mini-mart/`.
+PM2 config: 256M memory limit, auto-restart on crash, logs to `/Users/minmac.serv/server/logs/minimart/`.
 
 ### Agent Registration
 
 ```bash
 # On Mini (local)
-claude mcp add --transport http mini-mart http://localhost:6974/mcp
+claude mcp add --transport http minimart http://localhost:6974/mcp
 
 # On dev rig (SSH tunnel — Claude Code sandbox blocks direct Tailscale)
 # First: ssh -L 16974:localhost:6974 minmac.serv@100.126.124.95 -N
-claude mcp add --transport http mini-mart http://localhost:16974/mcp
+claude mcp add --transport http minimart http://localhost:16974/mcp
 ```
 
 ## Integration Dependencies
@@ -247,7 +247,7 @@ MANTIS being down degrades deploy, health, cron, and event tools. PM2, git, tick
 | MAGGOTS (FinanceDashboard) | maggots | 8000 | `services/maggots/repo/` |
 | Sillage (Fragrance Engine) | sillage | 3001 | `services/sillage/` |
 | MANTIS (Server Ops) | cp-app | 3200 | `mantis/` |
-| Mini Mart (MCP Server) | mini-mart | 6974 | `mini_mart/` |
+| minimart (MCP Server) | minimart | 6974 | `minimart/` |
 
 Alpha Lab v2 is not deployed on Mini (dev rig only).
 

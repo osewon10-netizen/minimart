@@ -42,11 +42,11 @@ const SERVICES: ServiceInfo[] = [
     checklistFile: "AI_Agent_Code_Review_Checklist.md",
   },
   {
-    name: "mini_mart",
-    displayName: "Mini Mart (Agent Tooling)",
+    name: "minimart",
+    displayName: "minimart (Agent Tooling)",
     stack: "Node.js, TypeScript, MCP SDK",
-    repoPath: "/Users/minmac.serv/server/mini_mart",
-    pm2Name: "mini-mart",
+    repoPath: "/Users/minmac.serv/server/minimart",
+    pm2Name: "minimart",
     port: 6974,
     hasAgentsMd: true,
     checklistFile: "AI_Agent_Code_Review_Checklist.md",
@@ -60,7 +60,7 @@ export const tools: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        service: { type: "string", description: "Service name (e.g. hobby_bot, maggots, sillage, mantis, mini_mart)" },
+        service: { type: "string", description: "Service name (e.g. hobby_bot, maggots, sillage, mantis, minimart)" },
       },
     },
   },

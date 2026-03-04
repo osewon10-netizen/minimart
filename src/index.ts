@@ -41,7 +41,7 @@ async function main(): Promise<void> {
         await handleMcp(req, res);
       } else if (req.method === "GET" && req.url === "/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "ok", service: "mini-mart" }));
+        res.end(JSON.stringify({ status: "ok", service: "minimart" }));
       } else {
         res.writeHead(404);
         res.end("Not found");
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   });
 
   httpServer.listen(MCP_PORT, () => {
-    console.error(`mini-mart listening on port ${MCP_PORT}`);
+    console.error(`minimart listening on port ${MCP_PORT}`);
   });
 }
 
