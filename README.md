@@ -1,20 +1,22 @@
 # minimart
 
-MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 53 structured tools over HTTP — ticketing with agent handoffs, deployments, health monitoring, MANTIS proxy, git operations, file access, network metrics, training data export, and local LLM inference.
+MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. Exposes 58 structured tools over HTTP — ticketing with agent handoffs, deployments, health monitoring, MANTIS proxy, git operations, file access, network metrics, training data export, local LLM inference, and Ollama task management.
 
 ## Why This Exists
 
 Multiple AI agents (Claude Code, Codex, Gemini CLI, OpenClaw) need structured access to the same infrastructure. Instead of each agent implementing its own SSH commands and file parsing, this server provides a single, typed tool interface over MCP. Dev rig agents reach it via SSH tunnel (forwarded to localhost); agents on Mini hit it locally.
 
 ```
-Dev rig agents ──── SSH tunnel → localhost:16974 ──→ minimart
-Mini-side agents ── localhost:6974 ─────────────────→ minimart
+Dev rig agents ──── SSH tunnel → localhost:16974 ──→ minimart (port 6974, all 58 tools)
+Mini-side agents ── localhost:6974 ─────────────────→ minimart (port 6974, all 58 tools)
+Ollama agent ────── localhost:6975 ─────────────────→ minimart_express (19 tools, scoped)
                                                         │
                                                         ├─→ MANTIS (localhost:3200)
                                                         ├─→ PM2 CLI
                                                         ├─→ Ollama (localhost:11434)
                                                         ├─→ Service repos (git)
-                                                        └─→ Ticket/patch filesystem
+                                                        ├─→ Ticket/patch filesystem
+                                                        └─→ Ollama task index (OC-XXX)
 ```
 
 ## Quick Start
@@ -49,9 +51,13 @@ curl http://localhost:6974/health
 
 The server follows a simple three-layer pattern:
 
-**Layer 1 — HTTP entry** (`src/index.ts`): Bare `node:http` server. Two routes: `POST /mcp` (MCP protocol) and `GET /health` (JSON healthcheck). Each MCP request creates a fresh transport + server instance (stateless, no sessions).
+**Layer 1 — HTTP entry**: Two entry points serve different audiences:
+- `src/index.ts` (port 6974) — Full server for frontier agents (Claude, Codex, Gemini). All 58 tools, no restrictions.
+- `src/index-express.ts` (port 6975) — Scoped server for the local Ollama agent (Qwen3 4B). 19 tools allowlisted, localhost-only, concurrency-limited (max 4), fail-closed dispatch.
 
-**Layer 2 — MCP dispatch** (`src/server.ts`): Registers 18 tool modules. On `tools/list`, returns all 53 tool definitions. On `tools/call`, finds the right module by scanning tool names and delegates.
+Both use bare `node:http` with two routes: `POST /mcp` and `GET /health`. Stateless — each request gets a fresh transport + server instance.
+
+**Layer 2 — MCP dispatch** (`src/server.ts`): Parameterized server factory `createServer(config?)`. Registers 19 tool modules. When `allowedTools` is set, `tools/list` returns only permitted tools and `tools/call` rejects anything not in the set. Startup validation crashes if the allowlist contains unknown tool names.
 
 **Layer 3 — Tool modules** (`src/tools/*.ts`): Each module exports `tools: Tool[]` (MCP definitions) and `handleCall(name, args)` (implementation). Tools talk to MANTIS, PM2, Ollama, git, or the local filesystem.
 
@@ -66,7 +72,7 @@ The server follows a simple three-layer pattern:
 | Local LLM | Ollama (localhost:11434) | REST API |
 | Service metadata | In-memory registry | Hardcoded in `registry.ts` |
 
-## Tools (53 total)
+## Tools (58 total)
 
 ### Ticketing & Handoffs (22)
 - `create_ticket` / `list_tickets` / `view_ticket` / `search_tickets` / `update_ticket` / `update_ticket_status` / `archive_ticket` / `assign_ticket`
@@ -129,17 +135,24 @@ The server follows a simple three-layer pattern:
 - `batch_ticket_status` — batch lookup of TK/PA IDs across open + archive
 
 ### Files (2)
-- `file_read` / `file_write` — scoped filesystem access within agent/workspace/
+- `file_read` / `file_write` — scoped filesystem access (workspace varies by server instance)
 
 ### Network (1)
 - `network_quality` — measure latency/jitter/packet loss, record as JSONL time-series
+
+### Ollama Tasks (4)
+- `create_oc_task` — create an OC (Ollama Churns) work item (code review, log digest, etc.)
+- `list_oc_tasks` — list OC tasks, filter by status or task_type
+- `view_oc_task` — view a single OC task by ID
+- `update_oc_task` — update status/notes/result_path, auto-sets completed_at
 
 ## Project Structure
 
 ```
 src/
-├── index.ts              # HTTP entry point (port 6974)
-├── server.ts             # MCP server factory + tool dispatch
+├── index.ts              # HTTP entry point — full server (port 6974, all tools)
+├── index-express.ts      # HTTP entry point — scoped server (port 6975, 19 tools)
+├── server.ts             # MCP server factory + tool dispatch (parameterized allowlist)
 ├── types.ts              # Shared TypeScript interfaces
 ├── lib/                  # Shared utilities
 │   ├── paths.ts          # All paths, URLs, port config
@@ -150,14 +163,14 @@ src/
 │   ├── mantis-client.ts      # HTTP client → MANTIS tRPC
 │   ├── pm2-client.ts         # PM2 CLI wrapper
 │   └── ollama-client.ts      # Ollama REST client
-└── tools/                # 18 tool modules (54 tools total)
+└── tools/                # 19 tool modules (58 tools total)
     ├── tickets.ts        # Ticket CRUD + search + archive + assign
     ├── patches.ts        # Patch CRUD + search + archive + assign
     ├── tags.ts           # Tag normalization
     ├── registry.ts       # Service metadata
     ├── mantis.ts         # MANTIS tRPC proxy
     ├── health.ts         # PM2 status/restart, health checks, HTTP probe
-    ├── logs.ts           # Log retrieval + search
+    ├── logs.ts           # Log retrieval + search (100KB output cap on search)
     ├── deploy.ts         # Deploy/rollback via MANTIS
     ├── review.ts         # Checklist reader + audit log
     ├── cron.ts           # Cron management
@@ -167,8 +180,9 @@ src/
     ├── wrappers.ts       # Ops script execution
     ├── overview.ts       # Aggregate status + batch lookups + handoff queue/claim
     ├── training.ts       # Training data export from archive
-    ├── files.ts          # Scoped file read/write
-    └── network.ts        # Network quality metrics
+    ├── files.ts          # Scoped file read/write (workspace varies by server)
+    ├── network.ts        # Network quality metrics
+    └── oc.ts             # Ollama Churns task CRUD (OC-XXX lifecycle)
 ```
 
 ## Development
@@ -194,31 +208,40 @@ npm run build
 
 ## Deployment
 
-Runs on Mac Mini under PM2:
+Runs on Mac Mini under PM2 (two processes):
 
 ```bash
-# Start/restart
+# Start both servers
 pm2 start ecosystem.config.cjs
-pm2 restart minimart
+
+# Restart individually
+pm2 restart minimart          # full server (port 6974)
+pm2 restart minimart_express  # scoped server (port 6975)
 
 # View logs
 pm2 logs minimart --lines 50
+pm2 logs minimart_express --lines 50
 
 # Monitor
 pm2 monit
 ```
 
-PM2 config: 256M memory limit, auto-restart on crash, logs to `/Users/minmac.serv/server/logs/minimart/`.
+PM2 config:
+- `minimart` — 256M memory limit, all 58 tools, logs to `logs/minimart/`
+- `minimart_express` — 128M memory limit, 19 tools, localhost-only, file workspace scoped to `agent/ollama/`, logs to `logs/minimart_express/`
 
 ### Agent Registration
 
 ```bash
-# On Mini (local)
+# Frontier agents on Mini (local) — full access
 claude mcp add --transport http minimart http://localhost:6974/mcp
 
-# On dev rig (SSH tunnel — Claude Code sandbox blocks direct Tailscale)
+# Frontier agents on dev rig (SSH tunnel — Claude Code sandbox blocks direct Tailscale)
 # First: ssh -L 16974:localhost:6974 minmac.serv@100.126.124.95 -N
 claude mcp add --transport http minimart http://localhost:16974/mcp
+
+# Ollama agent on Mini — scoped access (19 tools, localhost only)
+# Configured via task runner cron, not manual registration
 ```
 
 ## Integration Dependencies
@@ -230,8 +253,9 @@ claude mcp add --transport http minimart http://localhost:16974/mcp
 | Ollama | localhost:11434 | Local LLM inference |
 | Service repos | /Users/minmac.serv/server/services/* | Git operations, checklist reads |
 | Ticket filesystem | /Users/minmac.serv/server/agent/workspace/ | Ticket/patch CRUD |
+| OC task index | /Users/minmac.serv/server/agent/ollama/tasks/ | Ollama task queue |
 
-MANTIS being down degrades deploy, health, cron, and event tools. PM2, git, ticket, and Ollama tools continue working independently.
+MANTIS being down degrades deploy, health, cron, and event tools. PM2, git, ticket, Ollama, and OC task tools continue working independently.
 
 ## Key Design Decisions
 
@@ -245,6 +269,8 @@ MANTIS being down degrades deploy, health, cron, and event tools. PM2, git, tick
 
 **Two runtime deps:** Only `@modelcontextprotocol/sdk` and `superjson`. Everything else uses Node.js built-ins. This keeps the attack surface small and updates simple.
 
+**Scoped server for Ollama:** The `minimart_express` instance (port 6975) runs a hardened subset of tools for the local 4B model. Fail-closed dispatch rejects unknown tools, startup validates the allowlist against the registry, and a concurrency guard (max 4 in-flight) prevents resource exhaustion. File operations are scoped to the Ollama workspace directory.
+
 ## Services Managed (on Mini)
 
 | Service | PM2 Name | Port | Repo Path |
@@ -254,6 +280,7 @@ MANTIS being down degrades deploy, health, cron, and event tools. PM2, git, tick
 | Sillage (Fragrance Engine) | sillage | 3001 | `services/sillage/` |
 | MANTIS (Server Ops) | cp-app | 3200 | `mantis/` |
 | minimart (MCP Server) | minimart | 6974 | `minimart/` |
+| minimart_express (Scoped MCP) | minimart_express | 6975 | `minimart/` |
 
 Alpha Lab v2 is not deployed on Mini (dev rig only).
 
@@ -265,7 +292,12 @@ Backups, configs, data, and secrets live OUTSIDE repos:
 /Users/minmac.serv/server/
 ├── services/{svc}/[repo/]    # Git repos (MCP reads these)
 ├── mantis/                   # MANTIS (directly at root)
-├── agent/workspace/          # Tickets, patches, memory (MCP manages these)
+├── agent/
+│   ├── workspace/            # Tickets, patches, memory (main MCP workspace)
+│   └── ollama/               # Ollama agent workspace (minimart_express scope)
+│       ├── tasks/            # OC task index (OC-XXX)
+│       ├── results/          # Task output files
+│       └── memory/           # Ollama agent memory
 ├── backups/{svc}/            # Backup files (MCP reads, outside repos)
 ├── config/env/               # .env files per service (outside repos)
 ├── data/{svc}/               # Runtime data (outside repos)
