@@ -20,6 +20,10 @@ export const FAILURE_CLASSES_PATH = `${AGENT_WORKSPACE}/tickets/failure-classes.
 // Memory/context storage
 export const MEMORY_DIR = `${AGENT_WORKSPACE}/memory`;
 
+// Ticketing guides (served to agents via get_ticketing_guide tool)
+export const TICKETING_DEV_PATH = `${SERVER_ROOT}/TICKETING_DEV.md`;
+export const TICKETING_MINI_PATH = `${SERVER_ROOT}/TICKETING_MINI.md`;
+
 // Service repos on Mini
 export const SERVICE_REPOS: Record<string, string> = {
   hobby_bot: `${SERVER_ROOT}/services/hobby_bot/repo`,

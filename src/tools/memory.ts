@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { MEMORY_DIR, SERVICE_REPOS } from "../lib/paths.js";
+import { MEMORY_DIR, SERVICE_REPOS, TICKETING_DEV_PATH, TICKETING_MINI_PATH } from "../lib/paths.js";
 
 export const tools: Tool[] = [
   {
@@ -26,6 +26,21 @@ export const tools: Tool[] = [
         author: { type: "string" },
       },
       required: ["topic", "content", "author"],
+    },
+  },
+  {
+    name: "get_ticketing_guide",
+    description: "Load the ticketing workflow reference for this agent's role. Call at session start to learn lifecycle, status transitions, assigned_to conventions, and tiering rules.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        role: {
+          type: "string",
+          enum: ["dev", "mini"],
+          description: "Agent role — dev for dev rig agents, mini for server-side agents",
+        },
+      },
+      required: ["role"],
     },
   },
   {
@@ -88,6 +103,20 @@ async function setContext(args: Record<string, unknown>): Promise<CallToolResult
   return { content: [{ type: "text", text: JSON.stringify({ updated: true, file: filePath }) }] };
 }
 
+async function getTicketingGuide(args: Record<string, unknown>): Promise<CallToolResult> {
+  const role = args.role as "dev" | "mini";
+  const filePath = role === "dev" ? TICKETING_DEV_PATH : TICKETING_MINI_PATH;
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    return { content: [{ type: "text", text: content }] };
+  } catch {
+    return {
+      content: [{ type: "text", text: `Ticketing guide not found at ${filePath}` }],
+      isError: true,
+    };
+  }
+}
+
 async function getProjectInfo(args: Record<string, unknown>): Promise<CallToolResult> {
   const service = args.service as string;
   const repoPath = SERVICE_REPOS[service];
@@ -117,6 +146,7 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
   switch (name) {
     case "get_context": return getContext(args);
     case "set_context": return setContext(args);
+    case "get_ticketing_guide": return getTicketingGuide(args);
     case "get_project_info": return getProjectInfo(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
