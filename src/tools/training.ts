@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { TICKET_ARCHIVE, PATCH_ARCHIVE } from "../lib/paths.js";
+import { TICKET_ARCHIVE, PATCH_ARCHIVE, OLLAMA_WORKSPACE } from "../lib/paths.js";
 import type { TicketEntry, PatchEntry } from "../types.js";
+
+const OLLAMA_METRICS_DIR = path.join(OLLAMA_WORKSPACE, "metrics");
 
 // ─── Archive line shapes (mirrors archive.ts) ────────────────────────
 
@@ -76,8 +79,12 @@ export const tools: Tool[] = [
         },
         type: {
           type: "string",
-          enum: ["ticket", "patch", "all"],
+          enum: ["ticket", "patch", "ollama_metric", "all"],
           description: "Filter by record type (default: all)",
+        },
+        include_ollama_metrics: {
+          type: "boolean",
+          description: "Include aggregated Ollama performance metrics (default: false). Reads performance-YYYY-MM.jsonl from ollama/metrics/.",
         },
       },
     },
@@ -184,12 +191,98 @@ function toTrainingRecord(line: ArchiveLine): TrainingRecord {
   return record;
 }
 
+// ─── Ollama Metrics ──────────────────────────────────────────────────
+
+interface OllamaMetricLine {
+  ts: string;
+  task_type: string;
+  service: string | null;
+  work_class: string;
+  generation_time_sec: number;
+  success: boolean;
+  result_quality?: { score: number };
+}
+
+interface OllamaMetricRecord {
+  type: "ollama_metric";
+  task_type: string;
+  service: string | null;
+  work_class: string;
+  run_count: number;
+  success_rate: number;
+  avg_generation_time_sec: number;
+  avg_quality_score: number | null;
+  date_range: { from: string; to: string };
+}
+
+async function readOllamaMetrics(sinceFilter: string | undefined): Promise<OllamaMetricRecord[]> {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const cutoff = sinceFilter ?? thirtyDaysAgo;
+
+  let files: string[];
+  try {
+    files = (await fs.readdir(OLLAMA_METRICS_DIR)).filter((f) => f.startsWith("performance-") && f.endsWith(".jsonl"));
+  } catch {
+    return [];
+  }
+
+  const rawLines: OllamaMetricLine[] = [];
+  for (const file of files) {
+    const content = await fs.readFile(path.join(OLLAMA_METRICS_DIR, file), "utf-8").catch(() => "");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const parsed = JSON.parse(trimmed) as OllamaMetricLine;
+        if (parsed.ts >= cutoff) rawLines.push(parsed);
+      } catch { /* skip malformed */ }
+    }
+  }
+
+  // Aggregate by task_type + service + work_class
+  const buckets = new Map<string, OllamaMetricLine[]>();
+  for (const line of rawLines) {
+    const key = `${line.task_type}|${line.service ?? ""}|${line.work_class}`;
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(line);
+    buckets.set(key, bucket);
+  }
+
+  const records: OllamaMetricRecord[] = [];
+  for (const [key, lines] of buckets) {
+    const [task_type, serviceStr, work_class] = key.split("|");
+    const service = serviceStr || null;
+    const successCount = lines.filter((l) => l.success).length;
+    const avgGenTime = lines.reduce((s, l) => s + l.generation_time_sec, 0) / lines.length;
+    const qualityLines = lines.filter((l) => l.result_quality?.score != null);
+    const avgQuality = qualityLines.length > 0
+      ? qualityLines.reduce((s, l) => s + (l.result_quality?.score ?? 0), 0) / qualityLines.length
+      : null;
+    const timestamps = lines.map((l) => l.ts).sort();
+
+    records.push({
+      type: "ollama_metric",
+      task_type,
+      service,
+      work_class,
+      run_count: lines.length,
+      success_rate: Math.round((successCount / lines.length) * 100) / 100,
+      avg_generation_time_sec: Math.round(avgGenTime * 10) / 10,
+      avg_quality_score: avgQuality != null ? Math.round(avgQuality * 100) / 100 : null,
+      date_range: { from: timestamps[0].slice(0, 10), to: timestamps[timestamps.length - 1].slice(0, 10) },
+    });
+  }
+
+  return records;
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────
 
 async function exportTrainingData(args: Record<string, unknown>): Promise<CallToolResult> {
   const serviceFilter = args.service as string | undefined;
   const sinceFilter = args.since as string | undefined;
   const typeFilter = (args.type as string) ?? "all";
+  const includeOllamaMetrics = (args.include_ollama_metrics as boolean | undefined) ?? false;
 
   const allLines: ArchiveLine[] = [];
 
@@ -201,7 +294,7 @@ async function exportTrainingData(args: Record<string, unknown>): Promise<CallTo
   }
 
   let skipped = 0;
-  const records: TrainingRecord[] = [];
+  const records: (TrainingRecord | OllamaMetricRecord)[] = [];
 
   for (const line of allLines) {
     // Service filter
@@ -219,10 +312,24 @@ async function exportTrainingData(args: Record<string, unknown>): Promise<CallTo
     records.push(toTrainingRecord(line));
   }
 
+  // Ollama metrics
+  if ((includeOllamaMetrics || typeFilter === "ollama_metric") && typeFilter !== "ticket" && typeFilter !== "patch") {
+    const ollamaRecords = await readOllamaMetrics(sinceFilter);
+    const filtered = serviceFilter ? ollamaRecords.filter((r) => r.service === serviceFilter) : ollamaRecords;
+    records.push(...filtered);
+  }
+
   // Return as JSONL
   const jsonl = records.map((r) => JSON.stringify(r)).join("\n");
 
-  const summary = `Exported ${records.length} training records (${skipped} skipped — missing evidence/notes)`;
+  const ollamaCount = records.filter((r) => r.type === "ollama_metric").length;
+  const tkPaCount = records.length - ollamaCount;
+  const parts = [`Exported ${records.length} records`];
+  if (tkPaCount > 0) parts.push(`${tkPaCount} ticket/patch`);
+  if (ollamaCount > 0) parts.push(`${ollamaCount} ollama_metric`);
+  if (skipped > 0) parts.push(`${skipped} skipped`);
+
+  const summary = parts.join(" | ");
   const output = records.length > 0 ? `${summary}\n\n${jsonl}` : summary;
 
   return {
