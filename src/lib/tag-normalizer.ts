@@ -14,7 +14,8 @@ async function loadMap(): Promise<Record<string, string>> {
 
 /**
  * Normalize an array of raw tags using the tag-map.json.
- * Unknown tags pass through unchanged.
+ * Only known canonical tags are included in normalized output.
+ * Unknown tags are excluded from normalized and returned in unknown[].
  * Returns { normalized: string[], unknown: string[] }
  */
 export async function normalizeTags(
@@ -29,8 +30,6 @@ export async function normalizeTags(
     if (map[key]) {
       if (!normalized.includes(map[key])) normalized.push(map[key]);
     } else {
-      const kebab = key.replace(/[\s_]+/g, "-");
-      if (!normalized.includes(kebab)) normalized.push(kebab);
       unknown.push(tag);
     }
   }
