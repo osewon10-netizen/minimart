@@ -235,9 +235,9 @@ Agent (any machine)
 | Tool | Module | What It Does |
 |------|--------|-------------|
 | `create_oc_task` | oc.ts | Create an OC (Ollama Churns) task — allocates OC-XXX ID, validates task_type against registry |
-| `list_oc_tasks` | oc.ts | List OC tasks, filter by status or task_type |
+| `list_oc_tasks` | oc.ts | List OC tasks by status/type/service, or return bundled deduped escalation packets (`mode=escalation`) |
 | `view_oc_task` | oc.ts | View a single OC task by ID |
-| `update_oc_task` | oc.ts | Update OC task fields, auto-sets completed_at |
+| `update_oc_task` | oc.ts | Update OC fields; on completion validates structured OC output + computes confidence/impact gate and bundle metadata |
 | `archive_oc_task` | oc.ts | Move completed task from index → monthly JSONL archive (tasks/archive/YYYY-MM.jsonl) |
 | `list_oc_archive` | oc.ts | Search archived OC tasks by month, task_type, service (most recent first, limit 50) |
 | `get_task_config` | task-config.ts | Get execution config + prompt template for an OC task type. Omit task_type for full registry |

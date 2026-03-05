@@ -56,6 +56,7 @@ export const OLLAMA_TASKS = `${OLLAMA_WORKSPACE}/tasks`;
 export const OLLAMA_RESULTS = `${OLLAMA_WORKSPACE}/results`;
 export const OLLAMA_MEMORY = `${OLLAMA_WORKSPACE}/memory`;
 export const OC_INDEX = path.join(OLLAMA_TASKS, "index.json");
+export const OC_QUEUE = path.join(OLLAMA_TASKS, "queue.jsonl");
 export const OC_ARCHIVE_DIR = path.join(OLLAMA_TASKS, "archive");
 
 // OC task prompt templates (repo root, not src/ — tsc doesn't copy .md)

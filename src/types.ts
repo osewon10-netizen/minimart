@@ -113,6 +113,25 @@ export interface PatchIndex {
 
 // === OC (Ollama Churns) Task Types ===
 
+export interface OcStructuredResult {
+  finding: string;
+  confidence: number; // 0..1
+  impact: "low" | "medium" | "high" | "critical";
+  evidence_refs: string[];
+  proposed_next_action: string;
+  suggested_ticket_type: "ticket" | "patch" | "none";
+  suggested_service?: string;
+}
+
+export interface OcGateDecision {
+  route: "escalate" | "archive";
+  reason: string;
+  min_confidence: number;
+  min_evidence_count: number;
+  allowed_impacts: Array<"low" | "medium" | "high" | "critical">;
+  evaluated_at: string;
+}
+
 export interface OcTaskEntry {
   summary: string;
   task_type: string;        // "code_review" | "log_digest" | "archive_normalize" | etc
@@ -123,6 +142,10 @@ export interface OcTaskEntry {
   completed_at?: string;    // ISO timestamp
   result_path?: string;     // relative path to results file in ollama workspace
   notes?: string;           // completion notes or error info
+  structured_result?: OcStructuredResult;
+  gate?: OcGateDecision;
+  dedupe_key?: string;
+  bundle_key?: string;
 }
 
 export interface OcIndex {
