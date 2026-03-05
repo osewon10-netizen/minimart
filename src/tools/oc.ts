@@ -194,7 +194,102 @@ function candidateFromRecord(record: Record<string, unknown>): Partial<OcStructu
   };
 }
 
-function extractStructuredFromUnknown(raw: unknown): Partial<OcStructuredResult> | null {
+function parseJsonFromText(raw: string): unknown | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Continue with loose extraction paths.
+  }
+
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence?.[1]) {
+    try {
+      return JSON.parse(fence[1].trim());
+    } catch {
+      // Continue with loose extraction paths.
+    }
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const objectSlice = trimmed.slice(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(objectSlice);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function mapLogDigestToStructured(record: Record<string, unknown>): Partial<OcStructuredResult> | null {
+  const status = typeof record.status === "string" ? record.status.trim().toLowerCase() : "";
+  const summary = typeof record.summary === "string" ? record.summary.trim() : "";
+  if (!status && !summary) return null;
+
+  const errorCount = Number(record.error_count);
+  const warningCount = Number(record.warning_count);
+  const patterns = Array.isArray(record.patterns)
+    ? record.patterns.filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null)
+    : [];
+  const anomalies = Array.isArray(record.anomalies)
+    ? record.anomalies.filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null)
+    : [];
+
+  const impact: OcStructuredResult["impact"] =
+    status === "unhealthy" ? "high" :
+    status === "degraded" ? "medium" :
+    "low";
+
+  const finding = summary || `log_digest status=${status || "unknown"}`;
+  const evidenceRefs = dedupeStrings([
+    ...patterns
+      .map((p) => (typeof p.pattern === "string" ? p.pattern : ""))
+      .filter((v) => v.length > 0)
+      .slice(0, 3),
+    ...anomalies
+      .map((a) => (typeof a.message === "string" ? a.message : ""))
+      .filter((v) => v.length > 0)
+      .slice(0, 3),
+  ]);
+
+  const normalizedEvidence = evidenceRefs.length > 0
+    ? evidenceRefs
+    : [`log_digest_status:${status || "unknown"}`];
+
+  const signal =
+    (Number.isFinite(errorCount) ? Math.max(0, errorCount) : 0) +
+    (Number.isFinite(warningCount) ? Math.max(0, warningCount) * 0.5 : 0) +
+    anomalies.length +
+    patterns.length * 0.5;
+  const confidence = Math.min(0.98, Math.max(0.75, 0.75 + Math.min(0.2, signal * 0.01)));
+
+  const proposedNextAction =
+    status === "unhealthy"
+      ? "Open a ticket immediately and investigate recurring errors/anomalies from this digest."
+      : status === "degraded"
+        ? "Investigate warning/error trends and open a ticket if the pattern repeats in the next run."
+        : "No escalation needed. Continue monitoring on the next scheduled digest run.";
+
+  const suggestedTicketType: OcStructuredResult["suggested_ticket_type"] =
+    status === "unhealthy" || status === "degraded" ? "ticket" : "none";
+
+  return {
+    finding,
+    confidence: Number(confidence.toFixed(3)),
+    impact,
+    evidence_refs: normalizedEvidence,
+    proposed_next_action: proposedNextAction,
+    suggested_ticket_type: suggestedTicketType,
+  };
+}
+
+function extractStructuredFromUnknown(raw: unknown, taskType?: string): Partial<OcStructuredResult> | null {
   if (typeof raw !== "object" || raw === null) return null;
   const record = raw as Record<string, unknown>;
 
@@ -211,25 +306,41 @@ function extractStructuredFromUnknown(raw: unknown): Partial<OcStructuredResult>
     if (nested) return nested;
   }
 
+  if (taskType === "log_digest") {
+    const mapped =
+      mapLogDigestToStructured(record) ||
+      (typeof record.result === "object" && record.result !== null
+        ? mapLogDigestToStructured(record.result as Record<string, unknown>)
+        : null) ||
+      (typeof record.structured_result === "object" && record.structured_result !== null
+        ? mapLogDigestToStructured(record.structured_result as Record<string, unknown>)
+        : null);
+    if (mapped) return mapped;
+  }
+
   return null;
 }
 
-async function readStructuredFromResultPath(resultPath: string): Promise<Partial<OcStructuredResult> | null> {
+async function readStructuredFromResultPath(
+  resultPath: string,
+  taskType?: string
+): Promise<Partial<OcStructuredResult> | null> {
   const resolved = resolveResultPathForRead(resultPath);
   const raw = await fs.readFile(resolved, "utf-8");
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
+  const parsed = parseJsonFromText(raw);
+  if (parsed === null) {
+    throw new Error(`Could not parse JSON payload from result_path: ${resultPath}`);
   }
 
-  return extractStructuredFromUnknown(parsed);
+  return extractStructuredFromUnknown(parsed, taskType);
 }
 
-function extractStructuredFromArgs(args: Record<string, unknown>): Partial<OcStructuredResult> | null {
-  return extractStructuredFromUnknown(args);
+function extractStructuredFromArgs(
+  args: Record<string, unknown>,
+  taskType?: string
+): Partial<OcStructuredResult> | null {
+  return extractStructuredFromUnknown(args, taskType);
 }
 
 function validateStructuredResult(
@@ -644,19 +755,24 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
   }
 
   if (status === "completed") {
-    const fromArgs = extractStructuredFromArgs(args);
+    const fromArgs = extractStructuredFromArgs(args, entry.task_type);
+    let fromPathError: string | null = null;
     const fromPath =
       !fromArgs && entry.result_path
-        ? await readStructuredFromResultPath(entry.result_path).catch(() => null)
+        ? await readStructuredFromResultPath(entry.result_path, entry.task_type).catch((err) => {
+          fromPathError = err instanceof Error ? err.message : String(err);
+          return null;
+        })
         : null;
     const candidate = fromArgs ?? fromPath;
 
     if (!candidate && !forceComplete) {
+      const completionError =
+        "Cannot mark completed without structured result. Provide finding/confidence/impact/evidence_refs/proposed_next_action (or valid JSON at result_path), or set force_complete=true.";
       return {
         content: [{
           type: "text",
-          text:
-            "Cannot mark completed without structured result. Provide finding/confidence/impact/evidence_refs/proposed_next_action (or valid JSON at result_path), or set force_complete=true.",
+          text: `${completionError}${fromPathError ? ` result_path_error=${fromPathError}` : ""}`,
         }],
         isError: true,
       };
