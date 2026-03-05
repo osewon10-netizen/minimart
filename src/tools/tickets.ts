@@ -9,7 +9,11 @@ import {
   generateSlug,
 } from "../lib/index-manager.js";
 import { normalizeTags } from "../lib/tag-normalizer.js";
-import { validateFailureClass, validateAssignedTo } from "../lib/failure-validator.js";
+import {
+  validateFailureClass,
+  validateAssignedTo,
+  validateCreatorIdentity,
+} from "../lib/failure-validator.js";
 import { searchTicketArchive, appendTicketArchive, lookupTicketArchive } from "../lib/archive.js";
 import type { TicketIndex, TicketEntry } from "../types.js";
 
@@ -257,6 +261,12 @@ async function createTicket(args: Record<string, unknown>): Promise<CallToolResu
     assignedToWarning = atResult.warning;
   }
 
+  // Validate created_by identity when using agent-style names
+  const authorResult = validateCreatorIdentity(author);
+  if (!authorResult.valid) {
+    return { content: [{ type: "text", text: authorResult.error! }], isError: true };
+  }
+
   // Validate failure_class if provided
   if (failureClassRaw) {
     const { valid, suggestions } = await validateFailureClass(failureClassRaw);
@@ -310,6 +320,7 @@ async function createTicket(args: Record<string, unknown>): Promise<CallToolResu
   const warnings: string[] = [];
   if (unknownTags.length > 0) warnings.push(`unknown tags passed through: ${unknownTags.join(", ")}`);
   if (assignedToWarning) warnings.push(assignedToWarning);
+  if (authorResult.warning) warnings.push(authorResult.warning);
 
   return {
     content: [{

@@ -440,7 +440,10 @@ const map = await lookupTicketArchive(["TK-049", "TK-050"]);
 
 Ticket/patch entries have two assignment fields:
 - `assigned_to` — team queue: `"dev.minimart"`, `"mini"` (who should work this)
-- `claimed_by` — worker identity: `"dev.minimart.sonnet.4.6"` (who IS working this)
+- `claimed_by` — worker identity with model tier:
+  - `dev.minimart.codex.5.3.low|mid|high|xhigh`
+  - `dev.minimart.claude.sonnet.4.6.fast|std|think`
+  - `dev.minimart.gemini.2.5.low|high`
 
 Use `assign_ticket`/`assign_patch` for handoffs, `pick_up` for claiming.
 

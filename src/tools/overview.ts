@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { pm2List } from "../lib/pm2-client.js";
 import { mantisQuery, mantisHealthCheck } from "../lib/mantis-client.js";
+import { validateWorkerIdentity } from "../lib/failure-validator.js";
 import { readIndex, writeIndex } from "../lib/index-manager.js";
 import {
   TICKET_INDEX,
@@ -503,6 +504,10 @@ async function pickUp(args: Record<string, unknown>): Promise<CallToolResult> {
   const id = args.id as string;
   const agent = args.agent as string;
   const force = (args.force as boolean) ?? false;
+  const agentResult = validateWorkerIdentity(agent);
+  if (!agentResult.valid) {
+    return { content: [{ type: "text", text: agentResult.error! }], isError: true };
+  }
 
   // Determine type and read the right index
   const isTicket = id.startsWith("TK-");
@@ -563,6 +568,8 @@ async function pickUp(args: Record<string, unknown>): Promise<CallToolResult> {
           entry,
           related: relatedEntries,
           project: { service: entry.service, repoPath },
+          warning: agentResult.warning,
+          suggestion: agentResult.suggestion,
         }, null, 2),
       }],
     };
@@ -616,6 +623,8 @@ async function pickUp(args: Record<string, unknown>): Promise<CallToolResult> {
         entry,
         related: relatedEntries,
         project: { service: entry.service, repoPath },
+        warning: agentResult.warning,
+        suggestion: agentResult.suggestion,
       }, null, 2),
     }],
   };
