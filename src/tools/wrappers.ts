@@ -116,12 +116,13 @@ async function runWrapper(args: Record<string, unknown>): Promise<CallToolResult
     };
   }
 
-  // Check file exists
+  // Check file exists and is readable. Scripts are invoked via `bash`,
+  // so execute-bit drift should not block wrapper execution.
   try {
-    await fs.access(fullPath, fs.constants.X_OK);
+    await fs.access(fullPath, fs.constants.R_OK);
   } catch {
     return {
-      content: [{ type: "text", text: `Script not found or not executable: ${normalized}` }],
+      content: [{ type: "text", text: `Script not found or not readable: ${normalized}` }],
       isError: true,
     };
   }
