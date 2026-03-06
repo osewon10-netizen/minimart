@@ -55,9 +55,11 @@ export const OLLAMA_WORKSPACE = `${SERVER_ROOT}/agent/ollama`;
 export const OLLAMA_TASKS = `${OLLAMA_WORKSPACE}/tasks`;
 export const OLLAMA_RESULTS = `${OLLAMA_WORKSPACE}/results`;
 export const OLLAMA_MEMORY = `${OLLAMA_WORKSPACE}/memory`;
+export const OLLAMA_METRICS = `${OLLAMA_WORKSPACE}/metrics`;
 export const OC_INDEX = path.join(OLLAMA_TASKS, "index.json");
 export const OC_QUEUE = path.join(OLLAMA_TASKS, "queue.jsonl");
 export const OC_ARCHIVE_DIR = path.join(OLLAMA_TASKS, "archive");
+export const OC_TRACE_LOG = path.join(OLLAMA_METRICS, "oc-trace.jsonl");
 
 // OC task prompt templates (repo root, not src/ — tsc doesn't copy .md)
 export const PROMPTS_DIR = path.join(SERVER_ROOT, "minimart/prompts");

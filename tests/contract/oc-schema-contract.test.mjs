@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { withMcpClient } from "./helpers.mjs";
+import { OC_TRACE_LOG } from "../../build/lib/paths.js";
 
 function getTool(tools, name) {
   const tool = tools.find((t) => t.name === name);
@@ -28,4 +29,8 @@ test("OC schema exposes structured-result gating and escalation bundle mode", as
     assert.equal(listOcTasks.inputSchema.properties.window_minutes.type, "number");
     assert.equal(listOcTasks.inputSchema.properties.service.type, "string");
   });
+});
+
+test("OC trace log path stays under ollama metrics", () => {
+  assert.match(OC_TRACE_LOG, /agent[\\/]ollama[\\/]metrics[\\/]oc-trace\.jsonl$/);
 });

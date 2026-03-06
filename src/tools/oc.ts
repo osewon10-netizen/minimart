@@ -7,7 +7,7 @@ import type {
   OcStructuredResult,
   OcTaskEntry,
 } from "../types.js";
-import { OC_ARCHIVE_DIR, OC_INDEX, OC_QUEUE, OLLAMA_WORKSPACE } from "../lib/paths.js";
+import { OC_ARCHIVE_DIR, OC_INDEX, OC_QUEUE, OC_TRACE_LOG, OLLAMA_WORKSPACE } from "../lib/paths.js";
 import { readIndex, writeIndex, allocateOcId } from "../lib/index-manager.js";
 import { VALID_TASK_TYPES } from "../lib/task-registry.js";
 
@@ -67,6 +67,29 @@ interface OcArchiveLine {
   id: string;
   entry: OcTaskEntry;
   archived_at: string;
+}
+
+type OcTraceEventName =
+  | "task_created"
+  | "update_oc_task_attempt"
+  | "structured_result_validated"
+  | "structured_result_missing"
+  | "structured_result_invalid"
+  | "forced_complete_triggered"
+  | "update_oc_task_result"
+  | "archive_oc_task_attempt"
+  | "archive_oc_task_result";
+
+interface OcTraceEvent {
+  version: 1;
+  timestamp: string;
+  task_id: string;
+  event: OcTraceEventName;
+  reason_code: string;
+  task_type?: string;
+  service?: string;
+  status?: "open" | "completed";
+  details?: Record<string, unknown>;
 }
 
 interface EscalationPacket {
@@ -129,6 +152,37 @@ function buildBundleKey(
 async function appendQueueEvent(event: OcQueueEvent): Promise<void> {
   await fs.mkdir(path.dirname(OC_QUEUE), { recursive: true });
   await fs.appendFile(OC_QUEUE, `${JSON.stringify(event)}\n`, "utf-8");
+}
+
+async function appendTraceEvent(event: OcTraceEvent): Promise<void> {
+  await fs.mkdir(path.dirname(OC_TRACE_LOG), { recursive: true });
+  await fs.appendFile(OC_TRACE_LOG, `${JSON.stringify(event)}\n`, "utf-8");
+}
+
+async function traceOcEvent(
+  id: string,
+  event: OcTraceEventName,
+  reasonCode: string,
+  entry: Pick<OcTaskEntry, "task_type" | "service" | "status"> | undefined,
+  details?: Record<string, unknown>
+): Promise<string | null> {
+  try {
+    await appendTraceEvent({
+      version: 1,
+      timestamp: new Date().toISOString(),
+      task_id: id,
+      event,
+      reason_code: reasonCode,
+      task_type: entry?.task_type,
+      service: entry?.service,
+      status: entry?.status,
+      details,
+    });
+    return null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return `trace write failed: ${msg}`;
+  }
 }
 
 async function mirrorQueueEvent(op: "upsert" | "archive", id: string, entry: OcTaskEntry): Promise<string | null> {
@@ -658,6 +712,11 @@ async function createOcTask(args: Record<string, unknown>): Promise<CallToolResu
 
   await writeIndex(OC_INDEX, index);
   const queueWarning = await mirrorQueueEvent("upsert", id, index.tasks[id]);
+  const traceWarning = await traceOcEvent(id, "task_created", "task_created", index.tasks[id], {
+    created_by: createdBy,
+    has_service: Boolean(service),
+  });
+  const warnings = [queueWarning, traceWarning].filter((warning): warning is string => Boolean(warning));
 
   return {
     content: [{
@@ -665,7 +724,7 @@ async function createOcTask(args: Record<string, unknown>): Promise<CallToolResu
       text: JSON.stringify({
         id,
         entry: index.tasks[id],
-        warnings: queueWarning ? [queueWarning] : undefined,
+        warnings: warnings.length > 0 ? warnings : undefined,
       }, null, 2),
     }],
   };
@@ -753,6 +812,21 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
     return { content: [{ type: "text", text: `OC task not found: ${id}` }], isError: true };
   }
 
+  const traceWarnings: string[] = [];
+  const attemptTraceWarning = await traceOcEvent(
+    id,
+    "update_oc_task_attempt",
+    "update_requested",
+    entry,
+    {
+      requested_status: status ?? null,
+      force_complete: forceComplete,
+      has_result_path: resultPath !== undefined ? Boolean(resultPath) : Boolean(entry.result_path),
+      has_inline_structured_fields: Boolean(extractStructuredFromArgs(args, entry.task_type)),
+    }
+  );
+  if (attemptTraceWarning) traceWarnings.push(attemptTraceWarning);
+
   const updated: string[] = [];
 
   if (status !== undefined) {
@@ -819,6 +893,17 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
     if (!candidate && !forceComplete) {
       const completionError =
         "Cannot mark completed without structured result. Provide finding/confidence/impact/evidence_refs/proposed_next_action (or valid JSON at result_path), or set force_complete=true.";
+      const missingTraceWarning = await traceOcEvent(
+        id,
+        "structured_result_missing",
+        fromPathError ? "result_path_parse_failed" : "structured_result_missing",
+        entry,
+        {
+          result_path: entry.result_path ?? null,
+          result_path_error: fromPathError,
+        }
+      );
+      if (missingTraceWarning) traceWarnings.push(missingTraceWarning);
       return {
         content: [{
           type: "text",
@@ -831,11 +916,35 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
     if (candidate) {
       const validated = validateStructuredResult(candidate);
       if (!validated.ok) {
+        const invalidTraceWarning = await traceOcEvent(
+          id,
+          "structured_result_invalid",
+          "structured_result_validation_failed",
+          entry,
+          {
+            validation_error: validated.error,
+            result_path: entry.result_path ?? null,
+          }
+        );
+        if (invalidTraceWarning) traceWarnings.push(invalidTraceWarning);
         return { content: [{ type: "text", text: validated.error }], isError: true };
       }
 
       entry.structured_result = validated.value;
       updated.push("structured_result");
+      const validatedTraceWarning = await traceOcEvent(
+        id,
+        "structured_result_validated",
+        "structured_result_validated",
+        entry,
+        {
+          impact: validated.value.impact,
+          confidence: validated.value.confidence,
+          evidence_count: validated.value.evidence_refs.length,
+          suggested_ticket_type: validated.value.suggested_ticket_type,
+        }
+      );
+      if (validatedTraceWarning) traceWarnings.push(validatedTraceWarning);
 
       const gate = evaluateGate(validated.value);
       entry.gate = gate;
@@ -866,6 +975,14 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
     } else if (forceComplete) {
       const forceReason = forceReasonArg?.trim() || notes?.trim() || entry.notes?.trim();
       if (!forceReason) {
+        const forceMissingReasonTraceWarning = await traceOcEvent(
+          id,
+          "forced_complete_triggered",
+          "forced_completion_reason_missing",
+          entry,
+          {}
+        );
+        if (forceMissingReasonTraceWarning) traceWarnings.push(forceMissingReasonTraceWarning);
         return {
           content: [{
             type: "text",
@@ -901,6 +1018,17 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
         reason: forceReason,
       };
       updated.push("forced_completion");
+      const forcedTraceWarning = await traceOcEvent(
+        id,
+        "forced_complete_triggered",
+        "forced_completion_without_structured_result",
+        entry,
+        {
+          reason: forceReason,
+          result_path: entry.result_path ?? null,
+        }
+      );
+      if (forcedTraceWarning) traceWarnings.push(forcedTraceWarning);
 
       entry.notes = mergeNotes(
         entry.notes,
@@ -916,6 +1044,26 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
 
   await writeIndex(OC_INDEX, index);
   const queueWarning = await mirrorQueueEvent("upsert", id, entry);
+  if (queueWarning) traceWarnings.push(queueWarning);
+  const resultReasonCode =
+    entry.completion_mode === "forced"
+      ? "update_completed_forced"
+      : status === "completed"
+        ? "update_completed_structured"
+        : "update_saved";
+  const resultTraceWarning = await traceOcEvent(
+    id,
+    "update_oc_task_result",
+    resultReasonCode,
+    entry,
+    {
+      updated_fields: updated,
+      gate_route: entry.gate?.route ?? null,
+      completion_mode: entry.completion_mode ?? null,
+      has_structured_result: Boolean(entry.structured_result),
+    }
+  );
+  if (resultTraceWarning) traceWarnings.push(resultTraceWarning);
 
   return {
     content: [{
@@ -929,7 +1077,7 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
         forced_completion: entry.forced_completion ?? null,
         dedupe_key: entry.dedupe_key ?? null,
         bundle_key: entry.bundle_key ?? null,
-        warnings: queueWarning ? [queueWarning] : undefined,
+        warnings: traceWarnings.length > 0 ? traceWarnings : undefined,
       }, null, 2),
     }],
   };
@@ -950,6 +1098,19 @@ async function archiveOcTask(args: Record<string, unknown>): Promise<CallToolRes
     };
   }
 
+  const traceWarnings: string[] = [];
+  const archiveAttemptTraceWarning = await traceOcEvent(
+    id,
+    "archive_oc_task_attempt",
+    "archive_requested",
+    entry,
+    {
+      completion_mode: entry.completion_mode ?? null,
+      gate_route: entry.gate?.route ?? null,
+    }
+  );
+  if (archiveAttemptTraceWarning) traceWarnings.push(archiveAttemptTraceWarning);
+
   const month = new Date().toISOString().slice(0, 7);
   await fs.mkdir(OC_ARCHIVE_DIR, { recursive: true });
   const archivePath = path.join(OC_ARCHIVE_DIR, `${month}.jsonl`);
@@ -959,6 +1120,19 @@ async function archiveOcTask(args: Record<string, unknown>): Promise<CallToolRes
   delete index.tasks[id];
   await writeIndex(OC_INDEX, index);
   const queueWarning = await mirrorQueueEvent("archive", id, entry);
+  if (queueWarning) traceWarnings.push(queueWarning);
+  const archiveResultTraceWarning = await traceOcEvent(
+    id,
+    "archive_oc_task_result",
+    entry.completion_mode === "forced" ? "archive_completed_forced" : "archive_completed",
+    entry,
+    {
+      archived_to: `archive/${month}.jsonl`,
+      completion_mode: entry.completion_mode ?? null,
+      gate_route: entry.gate?.route ?? null,
+    }
+  );
+  if (archiveResultTraceWarning) traceWarnings.push(archiveResultTraceWarning);
 
   return {
     content: [{
@@ -967,7 +1141,7 @@ async function archiveOcTask(args: Record<string, unknown>): Promise<CallToolRes
         success: true,
         id,
         archived_to: `archive/${month}.jsonl`,
-        warnings: queueWarning ? [queueWarning] : undefined,
+        warnings: traceWarnings.length > 0 ? traceWarnings : undefined,
       }, null, 2),
     }],
   };
