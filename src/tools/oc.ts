@@ -973,7 +973,7 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
         updated.push("forced_completion");
       }
     } else if (forceComplete) {
-      const forceReason = forceReasonArg?.trim() || notes?.trim() || entry.notes?.trim();
+      const forceReason = forceReasonArg?.trim() || notes?.trim();
       if (!forceReason) {
         const forceMissingReasonTraceWarning = await traceOcEvent(
           id,
@@ -1032,7 +1032,7 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
 
       entry.notes = mergeNotes(
         entry.notes,
-        `[gate:archive] forced completion without structured result (${forceReason})`
+        `[gate:archive] forced completion without structured result (${forceReasonArg?.trim() ?? "see notes"})`
       );
       if (!updated.includes("notes")) updated.push("notes");
     }
