@@ -504,6 +504,14 @@ async function pickUp(args: Record<string, unknown>): Promise<CallToolResult> {
   const id = args.id as string;
   const agent = args.agent as string;
   const force = (args.force as boolean) ?? false;
+
+  if (!id) {
+    return { content: [{ type: "text", text: "id is required" }], isError: true };
+  }
+  if (!agent) {
+    return { content: [{ type: "text", text: "agent is required" }], isError: true };
+  }
+
   const agentResult = validateWorkerIdentity(agent);
   if (!agentResult.valid) {
     return { content: [{ type: "text", text: agentResult.error! }], isError: true };
