@@ -33,6 +33,7 @@ export const EXPRESS_ALLOWED_TOOLS = [
   "list_oc_archive", // OC archive search (read-only)
   "list_plans", // IP read-only (code_review / gap_detect context)
   "view_plan", // IP read-only
+  "get_tool_info", // introspection — verify live tool descriptions
 ] as const;
 
 export const EXPRESS_ALLOWED_SET = new Set<string>(EXPRESS_ALLOWED_TOOLS);

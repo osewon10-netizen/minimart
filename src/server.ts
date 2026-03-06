@@ -81,6 +81,57 @@ export interface ServerConfig {
   transitionGuards?: TransitionGuards;
 }
 
+// Built-in introspection tool — implemented inline to avoid circular deps with tool modules
+const GET_TOOL_INFO_DEF: Tool = {
+  name: "get_tool_info",
+  description:
+    "Return the live tool description and input schema for a named tool on this surface. " +
+    "Use this to verify that a description change or deployment actually took effect. " +
+    "Returns tool definition as registered in memory, plus whether it is available on the current surface.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        description: "Name of the tool to inspect, e.g. 'deploy_status'",
+      },
+    },
+    required: ["name"],
+  },
+};
+
+function handleGetToolInfo(
+  args: Record<string, unknown>,
+  allowed: Set<string> | undefined,
+  surfaceName: string | undefined,
+): CallToolResult {
+  const toolName = args.name;
+  if (typeof toolName !== "string" || !toolName) {
+    return { content: [{ type: "text", text: "Missing required parameter: name" }], isError: true };
+  }
+  const allDefs = getRegisteredToolDefinitions();
+  const def = allDefs.find((t) => t.name === toolName) ?? (toolName === "get_tool_info" ? GET_TOOL_INFO_DEF : undefined);
+  if (!def) {
+    return {
+      content: [{ type: "text", text: `Tool not found in registry: "${toolName}"` }],
+      isError: true,
+    };
+  }
+  const available = !allowed || allowed.has(toolName);
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify({
+        name: def.name,
+        description: def.description,
+        inputSchema: def.inputSchema,
+        available_on_surface: available,
+        surface: surfaceName ?? "minimart",
+      }, null, 2),
+    }],
+  };
+}
+
 export function getRegisteredToolDefinitions(): Tool[] {
   return toolModules.flatMap((m) => m.tools);
 }
@@ -90,7 +141,7 @@ export function getRegisteredToolNames(): string[] {
 }
 
 function getAllToolDefinitions(allowed?: Set<string>): Tool[] {
-  const all = getRegisteredToolDefinitions();
+  const all = [...getRegisteredToolDefinitions(), GET_TOOL_INFO_DEF];
   if (!allowed) return all;
   return all.filter((t) => allowed.has(t.name));
 }
@@ -101,6 +152,17 @@ async function dispatchTool(
   allowed?: Set<string>,
   surfaceName?: string,
 ): Promise<CallToolResult> {
+  // Built-in introspection — check allowlist first, then handle inline
+  if (name === "get_tool_info") {
+    if (allowed && !allowed.has(name)) {
+      return {
+        content: [{ type: "text", text: `Tool not available on this server: ${name}` }],
+        isError: true,
+      };
+    }
+    return handleGetToolInfo(args, allowed, surfaceName);
+  }
+
   // Fail closed: if allowlist is set and tool isn't in it, reject immediately
   if (allowed && !allowed.has(name)) {
     const surface = surfaceName ?? "unknown";

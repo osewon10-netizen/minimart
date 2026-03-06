@@ -57,6 +57,9 @@ export const ELECTRONICS_ALLOWED_TOOLS = [
   "gh_search_code",
   "gh_create_issue",
 
+  // Introspection (1)
+  "get_tool_info",
+
   // IP/PH — full lifecycle except verify (7)
   "create_plan",
   "list_plans",
