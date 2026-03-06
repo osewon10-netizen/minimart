@@ -39,10 +39,11 @@ export const ELECTRONICS_ALLOWED_TOOLS = [
   "lookup_tags",
   "validate_failure_class",
 
-  // Ollama helpers — frontier-facing (3)
+  // Ollama helpers — frontier-facing (4)
   "ollama_summarize_logs",
   "ollama_digest_service",
   "ollama_summarize_source",
+  "ollama_summarize_diff",
 
   // Context7 — embedded (2)
   "ctx7_resolve_library",

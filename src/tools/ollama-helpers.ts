@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -7,6 +9,8 @@ import { handleCall as logsHandleCall } from "./logs.js";
 import { handleCall as healthHandleCall } from "./health.js";
 import { handleCall as ticketsHandleCall } from "./tickets.js";
 import { handleCall as patchesHandleCall } from "./patches.js";
+
+const execFileAsync = promisify(execFile);
 
 const HELPER_MODEL = "kamekichi128/qwen3-4b-instruct-2507:latest";
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -115,6 +119,19 @@ export const tools: Tool[] = [
           enum: ["full", "fast"],
           description: "fast: skips logs (10-15s). full: all sources including logs (30-60s). Default: full",
         },
+      },
+      required: ["service"],
+    },
+  },
+  {
+    name: "ollama_summarize_diff",
+    description: "Summarize a git diff for a service repo using natural language. Runs git diff, sends it to Ollama with an optional query (e.g. 'what changed in the force_complete logic'), returns a focused 1-2KB summary. Default ref: HEAD~1. Cap 50KB diff input. Cached 5 min.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        service: { type: "string", description: "Service name from registry" },
+        ref: { type: "string", description: "Git ref to diff against (default: HEAD~1)" },
+        query: { type: "string", description: "Optional natural language question about the diff, e.g. 'what changed in the auth logic'" },
       },
       required: ["service"],
     },
@@ -575,6 +592,128 @@ Answer directly. Reference specific line numbers, function names, or variable na
   return result;
 }
 
+async function ollamaSummarizeDiff(args: Record<string, unknown>): Promise<CallToolResult> {
+  const service = args.service as string;
+  const ref = (args.ref as string | undefined) ?? "HEAD~1";
+  const query = (args.query as string | undefined) ?? "Summarize what changed in this diff.";
+
+  if (!SERVICE_REPOS[service]) {
+    const known = Object.keys(SERVICE_REPOS).join(", ");
+    return { content: [{ type: "text", text: `Unknown service: "${service}". Known: ${known}` }], isError: true };
+  }
+
+  const key = cacheKey("ollama_summarize_diff", service, `${ref}:${query}`);
+  const cached = getCached(key);
+  if (cached) {
+    const parsed = JSON.parse((cached.content[0] as { text: string }).text);
+    parsed.meta.cached = true;
+    return { content: [{ type: "text", text: JSON.stringify(parsed, null, 2) }] };
+  }
+
+  const start = Date.now();
+  let diffText = "";
+  let ollamaOk = false;
+  let fallback = false;
+  let inputChars = 0;
+  let outputChars = 0;
+
+  try {
+    const { stdout } = await execFileAsync(
+      "git", ["-C", SERVICE_REPOS[service], "diff", ref],
+      { timeout: 20000 }
+    );
+    diffText = stdout || "(no diff)";
+    if (Buffer.byteLength(diffText, "utf-8") > MAX_SOURCE_BYTES) {
+      diffText = diffText.slice(0, MAX_SOURCE_BYTES) + "\n...(truncated at 50KB)";
+    }
+  } catch (err) {
+    diffText = `(git diff failed: ${err instanceof Error ? err.message : String(err)})`;
+  }
+
+  const prompt = `You are a code reviewer. Answer the developer's question about the following git diff concisely and precisely.
+
+## Service: ${service} — diff vs ${ref}
+
+\`\`\`diff
+${diffText}
+\`\`\`
+
+## Question
+${query}
+
+## Instructions
+Answer directly. Reference file names, function names, or line context where relevant. Keep your answer under 2KB. No filler.`;
+
+  inputChars = prompt.length;
+  let answer: string | null = null;
+  let errorMsg: string | undefined;
+  try {
+    let response = await ollamaGenerate(HELPER_MODEL, prompt);
+    if (Buffer.byteLength(response, "utf-8") > MAX_SOURCE_RESPONSE_BYTES) {
+      response = response.slice(0, MAX_SOURCE_RESPONSE_BYTES) + "\n...(truncated)";
+    }
+    answer = response;
+    outputChars = response.length;
+    ollamaOk = true;
+  } catch (err) {
+    errorMsg = err instanceof Error ? err.message : String(err);
+    fallback = true;
+  }
+
+  const latencyMs = Date.now() - start;
+
+  await logUsage({
+    ts: new Date().toISOString(),
+    tool: "ollama_summarize_diff",
+    service,
+    mode: null,
+    latency_ms: latencyMs,
+    ok: ollamaOk,
+    cached: false,
+    fallback,
+    model: HELPER_MODEL,
+    input_chars: inputChars,
+    output_chars: outputChars,
+  });
+
+  if (fallback) {
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          service,
+          ref,
+          query,
+          answer: null,
+          fallback: true,
+          error: errorMsg ?? "Ollama unavailable",
+          meta: { latency_ms: latencyMs, cached: false },
+        }, null, 2),
+      }],
+    };
+  }
+
+  const result: CallToolResult = {
+    content: [{
+      type: "text",
+      text: JSON.stringify({
+        service,
+        ref,
+        query,
+        answer,
+        meta: {
+          model: HELPER_MODEL,
+          latency_ms: latencyMs,
+          cached: false,
+        },
+      }, null, 2),
+    }],
+  };
+
+  setCached(key, result);
+  return result;
+}
+
 // ─── Dispatch ────────────────────────────────────────────────────────
 
 export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
@@ -582,6 +721,7 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
     case "ollama_summarize_logs": return ollamaSummarizeLogs(args);
     case "ollama_digest_service": return ollamaDigestService(args);
     case "ollama_summarize_source": return ollamaSummarizeSource(args);
+    case "ollama_summarize_diff": return ollamaSummarizeDiff(args);
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }

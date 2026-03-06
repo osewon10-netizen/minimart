@@ -13,6 +13,7 @@ export const EXPRESS_ALLOWED_TOOLS = [
   "git_log", // read-only git
   "git_diff", // read-only git
   "git_status", // read-only git
+  "ollama_summarize_diff", // query-focused git diff digest via Ollama
   "service_registry", // read-only metadata
   "get_checklist", // read-only checklists
   "create_oc_task", // OC task CRUD
