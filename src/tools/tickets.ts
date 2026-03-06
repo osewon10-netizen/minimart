@@ -1,6 +1,7 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   TICKET_INDEX,
+  PATCH_INDEX,
 } from "../lib/paths.js";
 import {
   readIndex,
@@ -14,8 +15,8 @@ import {
   validateAssignedTo,
   validateCreatorIdentity,
 } from "../lib/failure-validator.js";
-import { searchTicketArchive, appendTicketArchive, lookupTicketArchive } from "../lib/archive.js";
-import type { TicketIndex, TicketEntry } from "../types.js";
+import { searchTicketArchive, appendTicketArchive, lookupTicketArchive, lookupPatchArchive } from "../lib/archive.js";
+import type { TicketIndex, TicketEntry, PatchIndex } from "../types.js";
 
 // ─── Human-readable rendering (on-the-fly, not stored) ─────────────
 
@@ -55,6 +56,64 @@ function renderHumanView(id: string, e: TicketEntry): string {
   }
 
   return lines.join("\n");
+}
+
+function mergeText(existing: string | undefined, append: string): string {
+  if (!existing || !existing.trim()) return append;
+  return `${existing}\n${append}`;
+}
+
+async function collectRelatedArchiveBlockers(
+  id: string,
+  entry: TicketEntry,
+  ticketIndex: TicketIndex
+): Promise<string[]> {
+  const related = (entry.related ?? []).filter((rid) => rid !== id);
+  if (related.length === 0) return [];
+
+  const blockers: string[] = [];
+  const relatedTicketIds = related.filter((rid) => rid.startsWith("TK-"));
+  const relatedPatchIds = related.filter((rid) => rid.startsWith("PA-"));
+
+  let patchIndex: PatchIndex = { next_id: 1, patches: {} };
+  try {
+    patchIndex = await readIndex<PatchIndex>(PATCH_INDEX);
+  } catch {
+    // If patch index is unavailable we still validate against archive lookups below.
+  }
+
+  const archivedTickets = relatedTicketIds.length > 0 ? await lookupTicketArchive(relatedTicketIds) : new Map();
+  const archivedPatches = relatedPatchIds.length > 0 ? await lookupPatchArchive(relatedPatchIds) : new Map();
+
+  for (const rid of related) {
+    if (rid.startsWith("TK-")) {
+      const openTicket = ticketIndex.tickets[rid];
+      if (openTicket) {
+        blockers.push(`${rid} is still open (${openTicket.status})`);
+        continue;
+      }
+      if (!archivedTickets.get(rid)) {
+        blockers.push(`${rid} not found in open index or archive`);
+      }
+      continue;
+    }
+
+    if (rid.startsWith("PA-")) {
+      const openPatch = patchIndex.patches[rid];
+      if (openPatch) {
+        blockers.push(`${rid} is still open (${openPatch.status})`);
+        continue;
+      }
+      if (!archivedPatches.get(rid)) {
+        blockers.push(`${rid} not found in open index or archive`);
+      }
+      continue;
+    }
+
+    blockers.push(`${rid} has unsupported related ID format`);
+  }
+
+  return blockers;
 }
 
 // ─── Tool Definitions ───────────────────────────────────────────────
@@ -137,7 +196,7 @@ export const tools: Tool[] = [
   },
   {
     name: "update_ticket_status",
-    description: "Advance a ticket's status. Transitions: open/in-progress → patched. Use archive_ticket to resolve/close with verification.",
+    description: "Advance a ticket's status. Transitions: open/in-progress → patched. Automatically hands patched tickets to mini for verification.",
     inputSchema: {
       type: "object",
       properties: {
@@ -162,6 +221,14 @@ export const tools: Tool[] = [
         health_check: { type: "string", description: "Health check result summary" },
         outcome: { type: "string", enum: ["fixed", "mitigated", "false_positive", "wont_fix", "needs_followup"] },
         commit: { type: "string", description: "Commit SHA of the fix" },
+        allow_incomplete_related: {
+          type: "boolean",
+          description: "Override related-chain guard and archive anyway (requires related_waiver_reason)",
+        },
+        related_waiver_reason: {
+          type: "string",
+          description: "Required when allow_incomplete_related=true to explain why chain closure is waived",
+        },
       },
       required: ["id", "verified_by"],
     },
@@ -493,9 +560,30 @@ async function updateTicketStatus(args: Record<string, unknown>): Promise<CallTo
     if (patchNotes) entry.patch_notes = patchNotes;
     entry.status = "patched";
     entry.outcome = outcome ?? entry.outcome;
+    if (entry.assigned_to !== "mini") {
+      entry.assigned_to = "mini";
+      entry.claimed_by = undefined;
+      entry.claimed_at = undefined;
+      entry.handoff_count = (entry.handoff_count ?? 0) + 1;
+    }
+    entry.handoff_note = mergeText(
+      entry.handoff_note,
+      `Auto-handoff: moved to mini verification queue at ${now} after status=patched.`
+    );
     entry.updated_at = now;
     await writeIndex(TICKET_INDEX, index);
-    return { content: [{ type: "text", text: JSON.stringify({ success: true, id, status: "patched" }) }] };
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          id,
+          status: "patched",
+          assigned_to: entry.assigned_to,
+          handoff_count: entry.handoff_count ?? 0,
+        }),
+      }],
+    };
   }
 
   return { content: [{ type: "text", text: "Unhandled status" }], isError: true };
@@ -508,6 +596,8 @@ async function archiveTicket(args: Record<string, unknown>): Promise<CallToolRes
   const healthCheck = (args.health_check as string) ?? "not checked";
   const outcome = (args.outcome as TicketEntry["outcome"]) ?? "fixed";
   const commitSha = args.commit as string | undefined;
+  const allowIncompleteRelated = (args.allow_incomplete_related as boolean | undefined) ?? false;
+  const relatedWaiverReason = (args.related_waiver_reason as string | undefined)?.trim();
 
   const index = await readIndex<TicketIndex>(TICKET_INDEX);
   const entry = index.tickets[id];
@@ -522,12 +612,38 @@ async function archiveTicket(args: Record<string, unknown>): Promise<CallToolRes
     };
   }
 
+  const relatedBlockers = await collectRelatedArchiveBlockers(id, entry, index);
+  if (relatedBlockers.length > 0 && !allowIncompleteRelated) {
+    return {
+      content: [{
+        type: "text",
+        text:
+          `Related-chain guard blocked archive for ${id}. Resolve/archive linked records first, ` +
+          `or pass allow_incomplete_related=true with related_waiver_reason. Blockers: ${relatedBlockers.join("; ")}`,
+      }],
+      isError: true,
+    };
+  }
+  if (relatedBlockers.length > 0 && allowIncompleteRelated && !relatedWaiverReason) {
+    return {
+      content: [{
+        type: "text",
+        text: "allow_incomplete_related=true requires related_waiver_reason to preserve auditability.",
+      }],
+      isError: true,
+    };
+  }
+
   const now = new Date().toISOString();
 
   // Warn if evidence or patch_notes missing (training data quality)
   const warnings: string[] = [];
   if (!entry.evidence) warnings.push("evidence is empty (training data quality)");
   if (!entry.patch_notes) warnings.push("patch_notes is empty (training data quality)");
+  if (relatedBlockers.length > 0) {
+    warnings.push(`related-chain guard waived: ${relatedBlockers.join("; ")}`);
+    warnings.push(`waiver_reason: ${relatedWaiverReason}`);
+  }
 
   // Build resolved entry with verification
   const resolvedEntry: TicketEntry = {

@@ -56,6 +56,11 @@ function renderHumanView(id: string, e: PatchEntry): string {
   return lines.join("\n");
 }
 
+function mergeText(existing: string | undefined, append: string): string {
+  if (!existing || !existing.trim()) return append;
+  return `${existing}\n${append}`;
+}
+
 // ─── Tool Definitions ───────────────────────────────────────────────
 
 export const tools: Tool[] = [
@@ -137,7 +142,7 @@ export const tools: Tool[] = [
   },
   {
     name: "update_patch_status",
-    description: "Advance a patch's status. Transitions: open → applied → verified. Archives on verified.",
+    description: "Advance a patch's status. Transitions: open → applied → verified. Applied patches are auto-handed to mini; verified patches archive immediately.",
     inputSchema: {
       type: "object",
       properties: {
@@ -491,9 +496,30 @@ async function updatePatchStatus(args: Record<string, unknown>): Promise<CallToo
     entry.applied_by = appliedBy;
     entry.commit = commit;
     entry.pushed = pushed;
+    if (entry.assigned_to !== "mini") {
+      entry.assigned_to = "mini";
+      entry.claimed_by = undefined;
+      entry.claimed_at = undefined;
+      entry.handoff_count = (entry.handoff_count ?? 0) + 1;
+    }
+    entry.handoff_note = mergeText(
+      entry.handoff_note,
+      `Auto-handoff: moved to mini verification queue at ${now} after status=applied.`
+    );
     entry.updated_at = now;
     await writeIndex(PATCH_INDEX, index);
-    return { content: [{ type: "text", text: JSON.stringify({ success: true, id, status: "applied" }) }] };
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          success: true,
+          id,
+          status: "applied",
+          assigned_to: entry.assigned_to,
+          handoff_count: entry.handoff_count ?? 0,
+        }),
+      }],
+    };
   }
 
   if (newStatus === "verified") {

@@ -690,6 +690,78 @@ async function batchArchive(args: Record<string, unknown>): Promise<CallToolResu
     results.push({ id, status: "skipped", reason: "invalid prefix — must start with TK- or PA-" });
   }
 
+  // Related-chain guard for ticket closure:
+  // a ticket can be archived only if each related ID is either:
+  // - included in this same batch, or
+  // - already archived (not open in indexes and present in archive).
+  const initialBatchIdSet = new Set([
+    ...archivableTickets.map((t) => t.id),
+    ...archivablePatches.map((p) => p.id),
+  ]);
+  const externalRelatedTkIds = new Set<string>();
+  const externalRelatedPaIds = new Set<string>();
+  for (const { id, entry } of archivableTickets) {
+    for (const rid of entry.related ?? []) {
+      if (rid === id || initialBatchIdSet.has(rid)) continue;
+      if (rid.startsWith("TK-")) externalRelatedTkIds.add(rid);
+      else if (rid.startsWith("PA-")) externalRelatedPaIds.add(rid);
+    }
+  }
+
+  const externalArchivedTickets = externalRelatedTkIds.size > 0
+    ? await lookupTicketArchive([...externalRelatedTkIds])
+    : new Map();
+  const externalArchivedPatches = externalRelatedPaIds.size > 0
+    ? await lookupPatchArchive([...externalRelatedPaIds])
+    : new Map();
+
+  const chainGuardPassedTickets: Array<{ id: string; entry: TicketEntry }> = [];
+  for (const candidate of archivableTickets) {
+    const blockers: string[] = [];
+    for (const rid of candidate.entry.related ?? []) {
+      if (rid === candidate.id || initialBatchIdSet.has(rid)) continue;
+
+      if (rid.startsWith("TK-")) {
+        const openRelated = ticketIdx?.tickets[rid];
+        if (openRelated) {
+          blockers.push(`${rid} is still open (${openRelated.status})`);
+          continue;
+        }
+        if (!externalArchivedTickets.get(rid)) {
+          blockers.push(`${rid} not found in open index or archive`);
+        }
+        continue;
+      }
+
+      if (rid.startsWith("PA-")) {
+        const openRelated = patchIdx?.patches[rid];
+        if (openRelated) {
+          blockers.push(`${rid} is still open (${openRelated.status})`);
+          continue;
+        }
+        if (!externalArchivedPatches.get(rid)) {
+          blockers.push(`${rid} not found in open index or archive`);
+        }
+        continue;
+      }
+
+      blockers.push(`${rid} has unsupported related ID format`);
+    }
+
+    if (blockers.length > 0) {
+      results.push({
+        id: candidate.id,
+        status: "skipped",
+        reason: `related-chain guard blocked archive: ${blockers.join("; ")}`,
+      });
+      continue;
+    }
+
+    chainGuardPassedTickets.push(candidate);
+  }
+  archivableTickets.length = 0;
+  archivableTickets.push(...chainGuardPassedTickets);
+
   // Auto-populate related: all IDs in the batch are related to each other
   const allArchivableIds = [
     ...archivableTickets.map((t) => t.id),

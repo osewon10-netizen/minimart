@@ -45,6 +45,19 @@ test("ticketing and handoff schema contracts are stable", async () => {
     assert.equal(createTicket.inputSchema.properties.where_to_look.type, "array");
     assert.equal(createTicket.inputSchema.properties.assigned_to.type, "string");
 
+    const archiveTicket = requireTool(toolMap, "archive_ticket");
+    assertRequired(archiveTicket, ["id", "verified_by"]);
+    assert.equal(archiveTicket.inputSchema.properties.allow_incomplete_related.type, "boolean");
+    assert.equal(archiveTicket.inputSchema.properties.related_waiver_reason.type, "string");
+
+    const updateTicketStatus = requireTool(toolMap, "update_ticket_status");
+    assertRequired(updateTicketStatus, ["id", "new_status"]);
+    assert.equal(updateTicketStatus.inputSchema.properties.new_status.type, "string");
+
+    const updatePatchStatus = requireTool(toolMap, "update_patch_status");
+    assertRequired(updatePatchStatus, ["id", "new_status"]);
+    assert.equal(updatePatchStatus.inputSchema.properties.new_status.type, "string");
+
     const pickUp = requireTool(toolMap, "pick_up");
     assertRequired(pickUp, ["id", "agent"]);
     assert.equal(pickUp.inputSchema.properties.id.type, "string");
