@@ -137,12 +137,12 @@ export const tools: Tool[] = [
   },
   {
     name: "update_ticket_status",
-    description: "Advance a ticket's status. Transitions: open → patched → resolved. Archives on resolved.",
+    description: "Advance a ticket's status. Transitions: open/in-progress → patched. Use archive_ticket to resolve/close with verification.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "Ticket ID, e.g. TK-049" },
-        new_status: { type: "string", enum: ["patched", "resolved"] },
+        new_status: { type: "string", enum: ["patched"] },
         outcome: { type: "string", enum: ["fixed", "mitigated", "false_positive", "wont_fix", "needs_followup"] },
         patch_notes: { type: "string", description: "Optional patch notes to set on transition" },
       },
@@ -452,9 +452,19 @@ async function updateTicket(args: Record<string, unknown>): Promise<CallToolResu
 
 async function updateTicketStatus(args: Record<string, unknown>): Promise<CallToolResult> {
   const id = args.id as string;
-  const newStatus = args.new_status as "patched" | "resolved";
+  const newStatus = args.new_status as string;
   const outcome = args.outcome as TicketEntry["outcome"] | undefined;
   const patchNotes = args.patch_notes as string | undefined;
+
+  if (newStatus === "resolved") {
+    return {
+      content: [{
+        type: "text",
+        text: "Direct resolve is disabled. Use archive_ticket with verification fields (verified_by, deployed, health_check, commit).",
+      }],
+      isError: true,
+    };
+  }
 
   const index = await readIndex<TicketIndex>(TICKET_INDEX);
   const entry = index.tickets[id];
@@ -466,7 +476,6 @@ async function updateTicketStatus(args: Record<string, unknown>): Promise<CallTo
   const validTransitions: Record<string, string[]> = {
     open: ["patched"],
     "in-progress": ["patched"],
-    patched: ["resolved"],
   };
   if (!validTransitions[entry.status]?.includes(newStatus)) {
     return {
@@ -487,25 +496,6 @@ async function updateTicketStatus(args: Record<string, unknown>): Promise<CallTo
     entry.updated_at = now;
     await writeIndex(TICKET_INDEX, index);
     return { content: [{ type: "text", text: JSON.stringify({ success: true, id, status: "patched" }) }] };
-  }
-
-  if (newStatus === "resolved") {
-    const resolvedEntry: TicketEntry = {
-      ...entry,
-      status: "resolved",
-      outcome: outcome ?? entry.outcome,
-      updated_at: now,
-    };
-
-    // Append to JSONL archive
-    await appendTicketArchive(id, resolvedEntry);
-
-    // Remove from main index
-    const { [id]: _removed, ...remainingTickets } = index.tickets;
-    const updatedIndex: TicketIndex = { ...index, tickets: remainingTickets };
-    await writeIndex(TICKET_INDEX, updatedIndex);
-
-    return { content: [{ type: "text", text: JSON.stringify({ success: true, id, status: "resolved" }) }] };
   }
 
   return { content: [{ type: "text", text: "Unhandled status" }], isError: true };
