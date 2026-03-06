@@ -137,7 +137,7 @@ export function getRegisteredToolDefinitions(): Tool[] {
 }
 
 export function getRegisteredToolNames(): string[] {
-  return getRegisteredToolDefinitions().map((t) => t.name);
+  return [...getRegisteredToolDefinitions(), GET_TOOL_INFO_DEF].map((t) => t.name);
 }
 
 function getAllToolDefinitions(allowed?: Set<string>): Tool[] {
