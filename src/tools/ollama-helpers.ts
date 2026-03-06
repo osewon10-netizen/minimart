@@ -38,6 +38,11 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
+// ─── Last Call Capture ───────────────────────────────────────────────
+// Stores the most recent Ollama I/O within this process for ollamaEval to attach.
+// Cleared on read. Low-concurrency surface (dev rig) — race window is acceptable.
+let lastOllamaCall: { input: string; output: string } | null = null;
+
 function cacheKey(tool: string, service: string, extra?: string): string {
   return `${tool}:${service}:${extra ?? "default"}`;
 }
@@ -144,8 +149,14 @@ export const tools: Tool[] = [
       properties: {
         tool_name: { type: "string", description: "Which ollama tool was just called, e.g. ollama_summarize_diff" },
         rating: { type: "string", enum: ["good", "partial", "bad"], description: "good: accurate and useful. partial: mostly right but missing something. bad: wrong or unhelpful." },
+        failure_tags: {
+          type: "array",
+          items: { type: "string", enum: ["severity_inflation", "generic_filler", "hallucinated_number", "missed_logic", "verbosity", "format_good"] },
+          description: "Standardized failure tags (use for partial/bad ratings). Multiple allowed.",
+        },
         note: { type: "string", description: "One-liner: what was right, wrong, or missing" },
         query: { type: "string", description: "The query or question you passed to the ollama tool (if any)" },
+        corrected_output: { type: "string", description: "What the correct output should have been (for partial/bad). This + ollama_output = fine-tuning training pair." },
       },
       required: ["tool_name", "rating"],
     },
@@ -228,6 +239,7 @@ Be direct. No filler. If logs look clean, say so in 2-3 lines.`;
     summary = response;
     outputChars = response.length;
     ollamaOk = true;
+    lastOllamaCall = { input: prompt, output: response };
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err);
     fallback = true;
@@ -391,6 +403,7 @@ Be direct and specific. Reference ticket/patch IDs. If everything looks clean, s
     briefing = response;
     outputChars = response.length;
     ollamaOk = true;
+    lastOllamaCall = { input: prompt, output: response };
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err);
     fallback = true;
@@ -546,6 +559,7 @@ Answer directly. Reference specific line numbers, function names, or variable na
     answer = response;
     outputChars = response.length;
     ollamaOk = true;
+    lastOllamaCall = { input: prompt, output: response };
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err);
     fallback = true;
@@ -669,6 +683,7 @@ Answer directly. Reference file names, function names, or line context where rel
     answer = response;
     outputChars = response.length;
     ollamaOk = true;
+    lastOllamaCall = { input: prompt, output: response };
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : String(err);
     fallback = true;
@@ -734,15 +749,26 @@ interface EvalRecord {
   ts: string;
   tool_name: string;
   rating: "good" | "partial" | "bad";
+  failure_tags?: string[];
   note?: string;
   query?: string;
+  ollama_input?: string;
+  ollama_output?: string;
+  corrected_output?: string;
 }
+
+const VALID_FAILURE_TAGS = new Set([
+  "severity_inflation", "generic_filler", "hallucinated_number",
+  "missed_logic", "verbosity", "format_good",
+]);
 
 async function ollamaEval(args: Record<string, unknown>): Promise<CallToolResult> {
   const toolName = args.tool_name as string;
   const rating = args.rating as "good" | "partial" | "bad";
+  const failureTags = args.failure_tags as string[] | undefined;
   const note = args.note as string | undefined;
   const query = args.query as string | undefined;
+  const correctedOutput = args.corrected_output as string | undefined;
 
   if (!toolName) {
     return { content: [{ type: "text", text: "tool_name is required" }], isError: true };
@@ -750,13 +776,26 @@ async function ollamaEval(args: Record<string, unknown>): Promise<CallToolResult
   if (!["good", "partial", "bad"].includes(rating)) {
     return { content: [{ type: "text", text: "rating must be good, partial, or bad" }], isError: true };
   }
+  if (failureTags) {
+    const invalid = failureTags.filter((t) => !VALID_FAILURE_TAGS.has(t));
+    if (invalid.length > 0) {
+      return { content: [{ type: "text", text: `Invalid failure_tags: ${invalid.join(", ")}. Valid: ${[...VALID_FAILURE_TAGS].join(", ")}` }], isError: true };
+    }
+  }
+
+  // Grab and clear last I/O capture
+  const lastCall = lastOllamaCall;
+  lastOllamaCall = null;
 
   const record: EvalRecord = {
     ts: new Date().toISOString(),
     tool_name: toolName,
     rating,
+    ...(failureTags !== undefined && failureTags.length > 0 && { failure_tags: failureTags }),
     ...(note !== undefined && { note }),
     ...(query !== undefined && { query }),
+    ...(lastCall !== null && { ollama_input: lastCall.input, ollama_output: lastCall.output }),
+    ...(correctedOutput !== undefined && { corrected_output: correctedOutput }),
   };
 
   try {
