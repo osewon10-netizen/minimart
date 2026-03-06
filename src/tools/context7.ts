@@ -39,7 +39,7 @@ async function resolveLibrary(args: Record<string, unknown>): Promise<CallToolRe
   try {
     const client = await getClient();
     const result = await client.callTool(
-      { name: "resolve-library-id", arguments: { libraryName } },
+      { name: "resolve-library-id", arguments: { query: libraryName, libraryName } },
       undefined,
       { timeout: TIMEOUT_MS },
     );
@@ -69,12 +69,14 @@ async function getDocs(args: Record<string, unknown>): Promise<CallToolResult> {
 
   try {
     const client = await getClient();
-    const callArgs: Record<string, unknown> = { context7CompatibleLibraryID: libraryId };
-    if (topic) callArgs.topic = topic;
+    const callArgs: Record<string, unknown> = {
+      libraryId,
+      query: topic ?? "overview",
+    };
     if (tokens) callArgs.tokens = tokens;
 
     const result = await client.callTool(
-      { name: "get-library-docs", arguments: callArgs },
+      { name: "query-docs", arguments: callArgs },
       undefined,
       { timeout: TIMEOUT_MS },
     );
