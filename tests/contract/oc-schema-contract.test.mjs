@@ -21,6 +21,7 @@ test("OC schema exposes structured-result gating and escalation bundle mode", as
     assert.equal(updateOcTask.inputSchema.properties.proposed_next_action.type, "string");
     assert.equal(updateOcTask.inputSchema.properties.suggested_ticket_type.type, "string");
     assert.equal(updateOcTask.inputSchema.properties.force_complete.type, "boolean");
+    assert.equal(updateOcTask.inputSchema.properties.force_reason.type, "string");
 
     const listOcTasks = getTool(tools, "list_oc_tasks");
     assert.equal(listOcTasks.inputSchema.properties.mode.type, "string");

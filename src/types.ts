@@ -132,6 +132,11 @@ export interface OcGateDecision {
   evaluated_at: string;
 }
 
+export interface OcForcedCompletion {
+  at: string;               // ISO timestamp
+  reason: string;           // explicit operator/runtime reason
+}
+
 export interface OcTaskEntry {
   summary: string;
   task_type: string;        // "code_review" | "log_digest" | "archive_normalize" | etc
@@ -144,6 +149,8 @@ export interface OcTaskEntry {
   notes?: string;           // completion notes or error info
   structured_result?: OcStructuredResult;
   gate?: OcGateDecision;
+  completion_mode?: "structured" | "forced";
+  forced_completion?: OcForcedCompletion;
   dedupe_key?: string;
   bundle_key?: string;
 }

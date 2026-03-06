@@ -57,6 +57,7 @@ interface OcQueueEvent {
     status: "open" | "completed";
     result_path?: string;
     gate_route?: "escalate" | "archive";
+    completion_mode?: "structured" | "forced";
     dedupe_key?: string;
     bundle_key?: string;
   };
@@ -143,6 +144,7 @@ async function mirrorQueueEvent(op: "upsert" | "archive", id: string, entry: OcT
         status: entry.status,
         result_path: entry.result_path,
         gate_route: entry.gate?.route,
+        completion_mode: entry.completion_mode,
         dedupe_key: entry.dedupe_key,
         bundle_key: entry.bundle_key,
       },
@@ -432,6 +434,17 @@ function mergeNotes(existing: string | undefined, append: string): string {
   return `${existing}\n${append}`;
 }
 
+function buildForcedArchiveGate(reason: string): OcGateDecision {
+  return {
+    route: "archive",
+    reason: `forced completion: ${reason}`,
+    min_confidence: MIN_CONFIDENCE,
+    min_evidence_count: MIN_EVIDENCE_COUNT,
+    allowed_impacts: [...ALLOWED_IMPACTS],
+    evaluated_at: new Date().toISOString(),
+  };
+}
+
 function buildEscalationPackets(
   tasks: Array<{ id: string; entry: OcTaskEntry }>,
   windowMinutes: number
@@ -581,6 +594,10 @@ export const tools: Tool[] = [
           type: "boolean",
           description: "Allow completion without structured result (default false)",
         },
+        force_reason: {
+          type: "string",
+          description: "Required context when force_complete=true and no structured result is available",
+        },
       },
       required: ["id"],
     },
@@ -694,6 +711,8 @@ async function listOcTasks(args: Record<string, unknown>): Promise<CallToolResul
     status: e.status,
     created: e.created,
     gate_route: e.gate?.route ?? null,
+    completion_mode: e.completion_mode ?? null,
+    forced_reason: e.forced_completion?.reason ?? null,
     confidence: e.structured_result?.confidence ?? null,
     impact: e.structured_result?.impact ?? null,
     dedupe_key: e.dedupe_key ?? null,
@@ -725,6 +744,7 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
   const resultPath = args.result_path as string | undefined;
   const notes = args.notes as string | undefined;
   const forceComplete = (args.force_complete as boolean | undefined) ?? false;
+  const forceReasonArg = args.force_reason as string | undefined;
   const symptomFingerprint = args.symptom_fingerprint as string | undefined;
 
   const index = await readIndex<OcIndex>(OC_INDEX);
@@ -741,6 +761,36 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
     if (status === "completed" && !entry.completed_at) {
       entry.completed_at = new Date().toISOString();
       updated.push("completed_at");
+    }
+    if (status === "open") {
+      if (entry.completed_at) {
+        delete entry.completed_at;
+        if (!updated.includes("completed_at")) updated.push("completed_at");
+      }
+      if (entry.structured_result) {
+        delete entry.structured_result;
+        updated.push("structured_result");
+      }
+      if (entry.gate) {
+        delete entry.gate;
+        updated.push("gate");
+      }
+      if (entry.completion_mode) {
+        delete entry.completion_mode;
+        updated.push("completion_mode");
+      }
+      if (entry.forced_completion) {
+        delete entry.forced_completion;
+        updated.push("forced_completion");
+      }
+      if (entry.dedupe_key) {
+        delete entry.dedupe_key;
+        updated.push("dedupe_key");
+      }
+      if (entry.bundle_key) {
+        delete entry.bundle_key;
+        updated.push("bundle_key");
+      }
     }
   }
 
@@ -805,10 +855,56 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
       const gateNote = `[gate:${gate.route}] ${gate.reason}`;
       entry.notes = mergeNotes(entry.notes, gateNote);
       if (!updated.includes("notes")) updated.push("notes");
+      if (entry.completion_mode !== "structured") {
+        entry.completion_mode = "structured";
+        updated.push("completion_mode");
+      }
+      if (entry.forced_completion) {
+        delete entry.forced_completion;
+        updated.push("forced_completion");
+      }
     } else if (forceComplete) {
+      const forceReason = forceReasonArg?.trim() || notes?.trim() || entry.notes?.trim();
+      if (!forceReason) {
+        return {
+          content: [{
+            type: "text",
+            text: "force_complete=true requires force_reason or non-empty notes to preserve failure context.",
+          }],
+          isError: true,
+        };
+      }
+
+      const completedAt = entry.completed_at ?? new Date().toISOString();
+      entry.completed_at = completedAt;
+      if (!updated.includes("completed_at")) updated.push("completed_at");
+
+      if (entry.structured_result) {
+        delete entry.structured_result;
+        updated.push("structured_result");
+      }
+      if (entry.dedupe_key) {
+        delete entry.dedupe_key;
+        updated.push("dedupe_key");
+      }
+      if (entry.bundle_key) {
+        delete entry.bundle_key;
+        updated.push("bundle_key");
+      }
+
+      entry.gate = buildForcedArchiveGate(forceReason);
+      updated.push("gate");
+      entry.completion_mode = "forced";
+      updated.push("completion_mode");
+      entry.forced_completion = {
+        at: completedAt,
+        reason: forceReason,
+      };
+      updated.push("forced_completion");
+
       entry.notes = mergeNotes(
         entry.notes,
-        "[gate:archive] forced completion without structured result"
+        `[gate:archive] forced completion without structured result (${forceReason})`
       );
       if (!updated.includes("notes")) updated.push("notes");
     }
@@ -829,6 +925,8 @@ async function updateOcTask(args: Record<string, unknown>): Promise<CallToolResu
         id,
         updated_fields: updated,
         gate: entry.gate ?? null,
+        completion_mode: entry.completion_mode ?? null,
+        forced_completion: entry.forced_completion ?? null,
         dedupe_key: entry.dedupe_key ?? null,
         bundle_key: entry.bundle_key ?? null,
         warnings: queueWarning ? [queueWarning] : undefined,
@@ -900,6 +998,8 @@ async function listOcArchive(args: Record<string, unknown>): Promise<CallToolRes
     service?: string;
     completed_at?: string;
     gate_route?: string;
+    completion_mode?: "structured" | "forced";
+    forced_reason?: string;
     confidence?: number;
     archived_at: string;
   }> = [];
@@ -934,6 +1034,8 @@ async function listOcArchive(args: Record<string, unknown>): Promise<CallToolRes
         service: record.entry.service,
         completed_at: record.entry.completed_at,
         gate_route: record.entry.gate?.route,
+        completion_mode: record.entry.completion_mode,
+        forced_reason: record.entry.forced_completion?.reason,
         confidence: record.entry.structured_result?.confidence,
         archived_at: record.archived_at,
       });
