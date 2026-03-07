@@ -5,6 +5,9 @@
  * Active tasks (6 proven by V4 eval lab — PA-176):
  *   log_digest, ticket_enrich, stale_ticket, backup_audit, health_trend, archive_normalize
  *
+ * On-demand tasks (PA-179) — triggered by orchestrator, not scheduled:
+ *   lookup_docs, summarize_pr
+ *
  * Removed tasks (frontier-quality, unreliable on qwen3-4b — PA-176):
  *   code_review, env_check, dep_audit, schema_drift, doc_staleness, gap_detect
  */
@@ -12,11 +15,12 @@
 export interface TaskTypeConfig {
   task_type: string;
   description: string;
-  cadence: "hourly" | "daily";
+  cadence: "hourly" | "daily" | "on_demand";
   /** Stagger offset for Ollama serial scheduling.
    *  Hourly tasks: minutes past the hour (0–59).
-   *  Daily tasks: minutes past midnight (e.g. 130 = 2:10 AM). */
-  offset_minutes: number;
+   *  Daily tasks: minutes past midnight (e.g. 130 = 2:10 AM).
+   *  On-demand tasks: omit (no scheduled offset). */
+  offset_minutes?: number;
   model: string;
   prompt_file: string;          // filename in prompts/ dir
   required_tools: string[];     // tools the runner calls to gather input
@@ -95,6 +99,29 @@ export const TASK_REGISTRY: Record<string, TaskTypeConfig> = {
     prompt_file: "archive_normalize.md",
     required_tools: ["export_training_data"],
     output_path: "results/archive-normalized/{date}.jsonl",
+    requires_service: false,
+    per_service: false,
+  },
+  // On-demand tasks — PA-179
+  lookup_docs: {
+    task_type: "lookup_docs",
+    description: "Resolve a library name via Context7 and compress the relevant docs via Ollama",
+    cadence: "on_demand",
+    model: "kamekichi128/qwen3-4b-instruct-2507:latest",
+    prompt_file: "lookup_docs.md",
+    required_tools: ["ctx7_resolve_library", "ctx7_get_docs", "ollama_generate"],
+    output_path: "results/lookup-docs/{date}.md",
+    requires_service: false,
+    per_service: false,
+  },
+  summarize_pr: {
+    task_type: "summarize_pr",
+    description: "Fetch a GitHub PR diff and produce a structured Ollama-compressed summary",
+    cadence: "on_demand",
+    model: "kamekichi128/qwen3-4b-instruct-2507:latest",
+    prompt_file: "summarize_pr.md",
+    required_tools: ["gh_get_pr_diff", "ollama_generate"],
+    output_path: "results/pr-summaries/{date}.md",
     requires_service: false,
     per_service: false,
   },

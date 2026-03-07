@@ -13,7 +13,7 @@
 | Branch | Port | Bind | PM2 Process | Entry | Tools | Role |
 |--------|------|------|-------------|-------|-------|------|
 | **MiniMart** | 6974 | `0.0.0.0` | `minimart` | `index.ts` | 78 | Ops / verification / archive authority |
-| **Express** | 6975 | `127.0.0.1` | `minimart_express` | `index-express.ts` | 33 | Ollama worker lane |
+| **Express** | 6975 | `127.0.0.1` | `minimart_express` | `index-express.ts` | 39 | Ollama worker lane |
 | **Electronics** | 6976 | `0.0.0.0` | `minimart_electronics` | `index-electronics.ts` | 43 | Dev/build store |
 
 All three share one codebase, one truth store, one `createServer()` factory. Each has its own explicit allowlist. 90 tools registered across 23 modules.
@@ -303,7 +303,23 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | `list_plans` | plans.ts | Read-only (for code_review / gap_detect context) |
 | `view_plan` | plans.ts | Read-only |
 
-**Express total: 33 tools** (no third-party tools)
+### Context7 — Read Only (2 tools, PA-179)
+
+| Tool | Module | Access |
+|------|--------|--------|
+| `ctx7_resolve_library` | context7.ts | Resolve library name → Context7 ID |
+| `ctx7_get_docs` | context7.ts | Fetch library docs by ID |
+
+### GitHub — Read Only (4 tools, PA-179)
+
+| Tool | Module | Access |
+|------|--------|--------|
+| `gh_get_file` | github-embedded.ts | Fetch file from repo |
+| `gh_get_pr_diff` | github-embedded.ts | Fetch PR diff |
+| `gh_list_commits` | github-embedded.ts | List commits |
+| `gh_search_code` | github-embedded.ts | Search code across repos |
+
+**Express total: 39 tools** (ctx7 + gh read-only added for ollama compression workflows)
 
 ### Blocked from Express
 

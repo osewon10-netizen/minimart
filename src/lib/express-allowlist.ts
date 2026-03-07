@@ -36,6 +36,14 @@ export const EXPRESS_ALLOWED_TOOLS = [
   "get_tool_info", // introspection — verify live tool descriptions
   "ollama_triage_ticket", // readiness check for TK/PA verification
   "ollama_compare_logs", // before/after deploy log comparison
+  // Context7 — read-only doc lookup (ollama compression workflows — PA-179)
+  "ctx7_resolve_library", // resolve library name → Context7 ID
+  "ctx7_get_docs", // fetch library docs by ID
+  // GitHub — read-only (ollama compression workflows — PA-179)
+  "gh_get_file", // fetch file from GitHub repo
+  "gh_get_pr_diff", // fetch PR diff
+  "gh_list_commits", // list commits
+  "gh_search_code", // search code across repos
 ] as const;
 
 export const EXPRESS_ALLOWED_SET = new Set<string>(EXPRESS_ALLOWED_TOOLS);
