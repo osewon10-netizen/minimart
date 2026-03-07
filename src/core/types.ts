@@ -21,9 +21,3 @@ export interface Plugin {
   transitionGuards?: Record<string, TransitionGuardMap>;
   init?: () => Promise<void>;
 }
-
-/** Legacy tool module shape (server.ts ToolModule). */
-export interface LegacyToolModule {
-  tools: Tool[];
-  handleCall: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
-}
