@@ -1,6 +1,6 @@
 # minimart
 
-MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. 90 tools across 23 modules, served on three branches — MiniMart (ops), Express (Ollama workers), Electronics (dev rig). Covers ticketing with agent handoffs, deployments, health monitoring, MANTIS proxy, git operations, implementation plans, embedded GitHub/Context7, local LLM inference, and OC task management.
+MCP (Model Context Protocol) server that bridges AI agents to Sewon's infrastructure on Mac Mini. 94 tools across 25 modules, served on three branches — MiniMart (ops), Express (Ollama workers), Electronics (dev rig). Covers ticketing with agent handoffs, deployments, health monitoring, MANTIS proxy, git operations, implementation plans, embedded GitHub/Context7, local LLM inference, and OC task management.
 
 Branch details and full tool listings: see `README.minimart_branches.md` (single source of truth for all tool tables).
 
@@ -9,9 +9,9 @@ Branch details and full tool listings: see `README.minimart_branches.md` (single
 Multiple AI agents (Claude Code, Codex, Gemini CLI, OpenClaw) need structured access to the same infrastructure. Instead of each agent implementing its own SSH commands and file parsing, this server provides a single, typed tool interface over MCP. Dev rig agents reach it via SSH tunnel (forwarded to localhost); agents on Mini hit it locally.
 
 ```
-Dev rig agents ──── SSH tunnel → localhost:16976 ──→ minimart_electronics (port 6976, 43 tools)
-Mini-side agents ── localhost:6974 ─────────────────→ minimart (port 6974, 78 tools)
-Ollama agent ────── localhost:6975 ─────────────────→ minimart_express (port 6975, 33 tools)
+Dev rig agents ──── SSH tunnel → localhost:16976 ──→ minimart_electronics (port 6976, 49 tools)
+Mini-side agents ── localhost:6974 ─────────────────→ minimart (port 6974, 81 tools)
+Ollama agent ────── localhost:6975 ─────────────────→ minimart_express (port 6975, 43 tools)
                                                         │
                                                         ├─→ MANTIS (localhost:3200)
                                                         ├─→ PM2 CLI
@@ -54,13 +54,13 @@ curl http://localhost:6974/health
 The server follows a simple three-layer pattern:
 
 **Layer 1 — HTTP entry**: Three entry points serve different audiences:
-- `src/index.ts` (port 6974) — MiniMart: ops/verify/archive authority. 78 tools.
-- `src/index-express.ts` (port 6975) — Express: Ollama worker lane. 33 tools, localhost-only, concurrency-limited (max 4).
-- `src/index-electronics.ts` (port 6976) — Electronics: dev rig agents. 43 tools (35 native + 8 embedded), transition guards.
+- `src/index.ts` (port 6974) — MiniMart: ops/verify/archive authority. 81 tools.
+- `src/index-express.ts` (port 6975) — Express: Ollama worker lane. 43 tools, localhost-only, concurrency-limited (max 4).
+- `src/index-electronics.ts` (port 6976) — Electronics: dev rig agents. 49 tools (39 native + 10 embedded), transition guards.
 
 All use bare `node:http` with two routes: `POST /mcp` and `GET /health`. Stateless — each request gets a fresh transport + server instance.
 
-**Layer 2 — MCP dispatch** (`src/server.ts`): Parameterized server factory `createServer(config?)`. Registers 23 tool modules (90 tools). When `allowedTools` is set, `tools/list` returns only permitted tools and `tools/call` rejects anything not in the set. Startup validation crashes if the allowlist contains unknown tool names.
+**Layer 2 — MCP dispatch** (`src/server.ts`): Parameterized server factory `createServer(config?)`. Registers 25 tool modules (94 tools). When `allowedTools` is set, `tools/list` returns only permitted tools and `tools/call` rejects anything not in the set. Startup validation crashes if the allowlist contains unknown tool names.
 
 **Layer 3 — Tool modules** (`src/tools/*.ts`): Each module exports `tools: Tool[]` (MCP definitions) and `handleCall(name, args)` (implementation). Tools talk to MANTIS, PM2, Ollama, git, GitHub API, Context7 MCP, or the local filesystem.
 
@@ -82,8 +82,8 @@ Full tool listings, per-branch placement, blocked tools, and Quick Comparison: s
 | Branch | Tools | Role |
 |--------|------:|------|
 | MiniMart (6974) | 78 | Ops / verification / archive authority |
-| Express (6975) | 33 | Ollama worker lane (localhost-only, max 4 concurrent) |
-| Electronics (6976) | 43 | Dev rig agents (35 native + 8 embedded: Context7, GitHub) |
+| Express (6975) | 43 | Ollama worker lane (localhost-only, max 4 concurrent) |
+| Electronics (6976) | 49 | Dev rig agents (39 native + 10 embedded: Context7, GitHub) |
 
 ### Categories
 
@@ -97,7 +97,7 @@ Full tool listings, per-branch placement, blocked tools, and Quick Comparison: s
 - **Review** (2) — checklists, audit trail
 - **Memory** (4) — shared context, ticketing guide, project info
 - **Git** (3) — log, diff, status per service repo
-- **Ollama** (4) — local LLM generate/models + frontier-facing helpers (summarize, digest)
+- **Ollama** (9) — local LLM generate/models + frontier-facing helpers (summarize_logs, digest, summarize_source, summarize_diff, triage_ticket, compare_logs, eval)
 - **Overview** (7) — server overview, quick status, batch ops, queue, claim
 - **Files** (3) — scoped read/write + source file read
 - **OC Tasks** (7) — Ollama Churns lifecycle + archive
@@ -113,16 +113,16 @@ Full tool listings, per-branch placement, blocked tools, and Quick Comparison: s
 
 ```
 src/
-├── index.ts              # MiniMart entry — port 6974, 78 tools
-├── index-express.ts      # Express entry — port 6975, 33 tools, concurrency guard
-├── index-electronics.ts  # Electronics entry — port 6976, 43 tools, transition guards
-├── server.ts             # MCP server factory — 23 modules (90 tools), allowlist + guards
+├── index.ts              # MiniMart entry — port 6974, 81 tools
+├── index-express.ts      # Express entry — port 6975, 43 tools, concurrency guard
+├── index-electronics.ts  # Electronics entry — port 6976, 49 tools, transition guards
+├── server.ts             # MCP server factory — 25 modules (94 tools), allowlist + guards
 ├── types.ts              # Shared TypeScript interfaces
 ├── lib/                  # Shared utilities + allowlists
 │   ├── paths.ts              # All paths, URLs, port config
-│   ├── minimart-allowlist.ts # MiniMart allowlist (78 tools)
-│   ├── express-allowlist.ts  # Express allowlist (33 tools)
-│   ├── electronics-allowlist.ts # Electronics allowlist (43 tools)
+│   ├── minimart-allowlist.ts # MiniMart allowlist (81 tools)
+│   ├── express-allowlist.ts  # Express allowlist (43 tools)
+│   ├── electronics-allowlist.ts # Electronics allowlist (49 tools)
 │   ├── index-manager.ts  # Hardened index.json read/write (backup+fsync+validate+rename)
 │   ├── archive.ts        # JSONL archive operations (append, search, lookup)
 │   ├── tag-normalizer.ts     # Tag normalization
@@ -131,7 +131,7 @@ src/
 │   ├── pm2-client.ts         # PM2 CLI wrapper
 │   ├── ollama-client.ts      # Ollama REST client
 │   └── task-registry.ts     # OC task type configs (12 types) + validation set
-└── tools/                # 23 tool modules (90 tools total)
+└── tools/                # 25 tool modules (94 tools total)
     ├── tickets.ts        # Ticket CRUD + search + archive + assign
     ├── patches.ts        # Patch CRUD + search + archive + assign
     ├── tags.ts           # Tag normalization
@@ -203,9 +203,9 @@ pm2 monit
 ```
 
 PM2 config:
-- `minimart` — 256M memory limit, 78 tools, logs to `logs/minimart/`
-- `minimart_express` — 128M memory limit, 33 tools, localhost-only, workspace scoped to `agent/ollama/`
-- `minimart_electronics` — 128M memory limit, 43 tools, GITHUB_OWNER env, GITHUB_PAT via env file
+- `minimart` — 256M memory limit, 81 tools, logs to `logs/minimart/`
+- `minimart_express` — 128M memory limit, 43 tools, localhost-only, workspace scoped to `agent/ollama/`
+- `minimart_electronics` — 128M memory limit, 49 tools, GITHUB_OWNER env, GITHUB_PAT via env file
 
 ### Agent Registration
 
@@ -217,7 +217,7 @@ claude mcp add --transport http minimart http://localhost:6974/mcp
 # First: ssh -L 16976:localhost:6976 minmac.serv@100.126.124.95 -N
 claude mcp add --transport http electronics http://localhost:16976/mcp
 
-# Ollama agent on Mini — scoped access (33 tools, localhost only)
+# Ollama agent on Mini — scoped access (43 tools, localhost only)
 # Configured via OC orchestrator, not manual registration
 ```
 
@@ -246,7 +246,7 @@ MANTIS being down degrades deploy, health, cron, and event tools. PM2, git, tick
 
 **Two runtime deps:** Only `@modelcontextprotocol/sdk` and `superjson`. Everything else uses Node.js built-ins. This keeps the attack surface small and updates simple.
 
-**Three branches, one codebase:** All branches share `createServer()` with explicit allowlists. Express (33 tools) is concurrency-guarded for the 4B model. Electronics (43 tools) has transition guards restricting which status changes dev agents can make. MiniMart (78 tools) is the ops authority. See `README.minimart_branches.md` for full details.
+**Three branches, one codebase:** All branches share `createServer()` with explicit allowlists. Express (43 tools) is concurrency-guarded for the 4B model. Electronics (49 tools) has transition guards restricting which status changes dev agents can make. MiniMart (81 tools) is the ops authority. See `README.minimart_branches.md` for full details.
 
 ## Services Managed (on Mini)
 

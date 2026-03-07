@@ -12,11 +12,11 @@
 
 | Branch | Port | Bind | PM2 Process | Entry | Tools | Role |
 |--------|------|------|-------------|-------|-------|------|
-| **MiniMart** | 6974 | `0.0.0.0` | `minimart` | `index.ts` | 78 | Ops / verification / archive authority |
-| **Express** | 6975 | `127.0.0.1` | `minimart_express` | `index-express.ts` | 39 | Ollama worker lane |
-| **Electronics** | 6976 | `0.0.0.0` | `minimart_electronics` | `index-electronics.ts` | 43 | Dev/build store |
+| **MiniMart** | 6974 | `0.0.0.0` | `minimart` | `index.ts` | 81 | Ops / verification / archive authority |
+| **Express** | 6975 | `127.0.0.1` | `minimart_express` | `index-express.ts` | 43 | Ollama worker lane |
+| **Electronics** | 6976 | `0.0.0.0` | `minimart_electronics` | `index-electronics.ts` | 49 | Dev/build store |
 
-All three share one codebase, one truth store, one `createServer()` factory. Each has its own explicit allowlist. 90 tools registered across 23 modules.
+All three share one codebase, one truth store, one `createServer()` factory. Each has its own explicit allowlist. 94 tools registered across 25 modules.
 
 ---
 
@@ -134,12 +134,15 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | `git_diff` | git.ts | `git diff` (5000-char cap) |
 | `git_status` | git.ts | `git status --short` |
 
-### Ollama Helpers (2 tools)
+### Ollama Helpers (5 tools)
 
 | Tool | Module | Access |
 |------|--------|--------|
 | `ollama_summarize_logs` | ollama-helpers.ts | Compress PM2 logs via Qwen3-4B (5-min cache) |
 | `ollama_digest_service` | ollama-helpers.ts | One-call service briefing (5-min cache) |
+| `ollama_eval` | ollama-helpers.ts | Log quality rating for most recent ollama_* call |
+| `ollama_triage_ticket` | ollama-helpers.ts | Check if TK/PA is ready for mini verification |
+| `ollama_compare_logs` | ollama-helpers.ts | Before/after deploy log comparison |
 
 ### Overview (2 tools)
 
@@ -209,7 +212,7 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | `review_plan` | plans-ops.ts | Opus reviews IP post-implementation |
 | `verify_plan` | plans-ops.ts | Mini verifies + archives IP and all phases |
 
-**MiniMart total: 78 tools**
+**MiniMart total: 81 tools**
 
 ### Blocked from MiniMart
 
@@ -263,6 +266,20 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | `git_log` | git.ts | Read-only git |
 | `git_diff` | git.ts | Read-only git |
 | `git_status` | git.ts | Read-only git |
+
+### Ollama Helpers (3 tools)
+
+| Tool | Module | Access |
+|------|--------|--------|
+| `ollama_summarize_diff` | ollama-helpers.ts | Query-focused git diff digest via Ollama |
+| `ollama_triage_ticket` | ollama-helpers.ts | Check if TK/PA is ready for verification |
+| `ollama_compare_logs` | ollama-helpers.ts | Before/after deploy log comparison |
+
+### Introspection (1 tool)
+
+| Tool | Module | Access |
+|------|--------|--------|
+| `get_tool_info` | server.ts (inline) | Verify live tool descriptions |
 
 ### Registry + Checklists (3 tools)
 
@@ -319,7 +336,7 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | `gh_list_commits` | github-embedded.ts | List commits |
 | `gh_search_code` | github-embedded.ts | Search code across repos |
 
-**Express total: 39 tools** (ctx7 + gh read-only added for ollama compression workflows)
+**Express total: 43 tools** (ctx7 + gh read-only added for ollama compression workflows)
 
 ### Blocked from Express
 
@@ -332,7 +349,7 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | Memory writes | `set_context` |
 | Overview/batch | `server_overview`, `quick_status`, `batch_ticket_status`, `batch_archive`, `my_queue`, `peek`, `pick_up` |
 | Network | `network_quality` |
-| Ollama helpers | `ollama_summarize_logs`, `ollama_digest_service` |
+| Ollama helpers | `ollama_summarize_logs`, `ollama_digest_service`, `ollama_summarize_source`, `ollama_eval` |
 | Cron | `list_crons`, `cron_log`, `trigger_cron` |
 | IP mutations | `create_plan`, `claim_plan`, `update_phase`, `complete_plan`, `review_plan`, `verify_plan` |
 
@@ -425,12 +442,23 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 |------|--------|--------|
 | `batch_ticket_status` | overview.ts | Batch TK/PA ID lookup |
 
-### Ollama Helpers (2 tools)
+### Ollama Helpers (7 tools)
 
 | Tool | Module | Access |
 |------|--------|--------|
 | `ollama_summarize_logs` | ollama-helpers.ts | Compress logs via Ollama (frontier-facing) |
 | `ollama_digest_service` | ollama-helpers.ts | Service briefing via Ollama (frontier-facing) |
+| `ollama_summarize_source` | ollama-helpers.ts | Query source file via Ollama (50KB cap) |
+| `ollama_summarize_diff` | ollama-helpers.ts | Query-focused git diff digest via Ollama |
+| `ollama_triage_ticket` | ollama-helpers.ts | Check if TK/PA is ready for verification |
+| `ollama_compare_logs` | ollama-helpers.ts | Before/after deploy log comparison |
+| `ollama_eval` | ollama-helpers.ts | Log quality rating for calibration |
+
+### Introspection (1 tool)
+
+| Tool | Module | Access |
+|------|--------|--------|
+| `get_tool_info` | server.ts (inline) | Verify live tool descriptions |
 
 ### Context7 — Embedded (2 tools)
 
@@ -450,7 +478,7 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | `gh_search_code` | github-embedded.ts | Search code across repos |
 | `gh_create_issue` | github-embedded.ts | Create issue with labels |
 
-**Electronics total: 43 tools** (35 native + 8 embedded: 2 Context7 + 6 GitHub)
+**Electronics total: 49 tools** (39 native + 10 embedded: 2 Context7 + 6 GitHub + 1 introspection)
 
 ### Blocked from Electronics
 
@@ -554,6 +582,13 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | `ollama_models` | full | full | — |
 | `ollama_summarize_logs` | full | — | full |
 | `ollama_digest_service` | full | — | full |
+| `ollama_summarize_source` | — | — | full |
+| `ollama_summarize_diff` | — | full | full |
+| `ollama_triage_ticket` | full | full | full |
+| `ollama_compare_logs` | full | full | full |
+| `ollama_eval` | full | — | full |
+| **Introspection** | | | |
+| `get_tool_info` | — | full | full |
 | **Files** | | | |
 | `file_read` | full | scoped | — |
 | `file_write` | full | scoped | — |
@@ -582,14 +617,14 @@ All three share one codebase, one truth store, one `createServer()` factory. Eac
 | **Training** | | | |
 | `export_training_data` | full | read | — |
 | **Context7 (embedded)** | | | |
-| `ctx7_resolve_library` | — | — | full |
-| `ctx7_get_docs` | — | — | full |
+| `ctx7_resolve_library` | — | read | full |
+| `ctx7_get_docs` | — | read | full |
 | **GitHub (embedded)** | | | |
-| `gh_get_file` | — | — | full |
+| `gh_get_file` | — | read | full |
 | `gh_create_pr` | — | — | full |
-| `gh_get_pr_diff` | — | — | full |
-| `gh_list_commits` | — | — | full |
-| `gh_search_code` | — | — | full |
+| `gh_get_pr_diff` | — | read | full |
+| `gh_list_commits` | — | read | full |
+| `gh_search_code` | — | read | full |
 | `gh_create_issue` | — | — | full |
 
 ---
@@ -602,7 +637,7 @@ Every MCP connection injects its full tool manifest into agent context at sessio
 
 **Strategy: embed only the operations we need as native minimart tools.** Cherry-pick 3-6 tools per MCP, write thin wrappers.
 
-### Embedded on Electronics (6976) — 8 tools
+### Embedded on Electronics (6976) — 8 tools (+ Express read-only subset)
 
 **Context7 (2 of 2)** — remote MCP client to `https://mcp.context7.com/mcp`:
 
@@ -626,9 +661,9 @@ Every MCP connection injects its full tool manifest into agent context at sessio
 
 Playwright runs a browser locally — dev rig agents need the browser on the dev rig (not mini). Stays as a direct Playwright MCP connection on the dev rig. Mini agents can add Playwright/DuckDB as direct connections themselves if needed.
 
-### Not Embedded — Express (6975)
+### Also on Express (6975) — 6 read-only tools (PA-179)
 
-Ollama workers don't need library docs, GitHub, or browser automation. Zero third-party tools.
+Express gained read-only Context7 + GitHub tools for ollama compression workflows. Ollama workers fetch external docs/diffs, then compress via `ollama_generate` before results reach frontier agents. No mutations — `gh_create_pr` and `gh_create_issue` are NOT on Express.
 
 ### Direct Connection Only — 21st.dev Magic
 
@@ -638,7 +673,7 @@ Ollama workers don't need library docs, GitHub, or browser automation. Zero thir
 
 | Connection | Type | Status |
 |-----------|------|--------|
-| `electronics` | HTTP (6976) | Primary branch — 43 tools including embedded Context7 + GitHub |
+| `electronics` | HTTP (6976) | Primary branch — 49 tools including embedded Context7 + GitHub |
 | `magic` | stdio | Direct — 21st.dev creative tool |
 | `playwright` | stdio | Direct — browser on dev rig |
 | `MCP_DOCKER` | stdio | Docker MCP gateway |
