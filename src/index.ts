@@ -1,9 +1,9 @@
 import { createServer, validateAllowlist } from "./server.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { MCP_PORT } from "./lib/paths.js";
-import { MINIMART_ALLOWED_SET, MINIMART_ALLOWED_TOOLS } from "./lib/minimart-allowlist.js";
-import { normalizeMcpHeaders } from "./lib/mcp-http-compat.js";
+import { MCP_PORT } from "./shared/paths.js";
+import { MINIMART_ALLOWED_SET, MINIMART_ALLOWED_TOOLS } from "./shared/minimart-allowlist.js";
+import { normalizeMcpHeaders } from "./shared/mcp-http-compat.js";
 
 /** Collect raw body bytes from an IncomingMessage and parse as JSON. */
 async function parseJsonBody(req: IncomingMessage): Promise<unknown> {

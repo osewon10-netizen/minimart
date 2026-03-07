@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { mantisQuery, mantisMutation } from "../lib/mantis-client.js";
-import { SERVICE_REPOS } from "../lib/paths.js";
+import { mantisQuery, mantisMutation } from "../shared/mantis-client.js";
+import { SERVICE_REPOS } from "../shared/paths.js";
 import type { MantisServiceState, MantisRunnerResult } from "../types.js";
 
 const execFileAsync = promisify(execFile);

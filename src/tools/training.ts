@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { TICKET_ARCHIVE, PATCH_ARCHIVE, OLLAMA_WORKSPACE } from "../lib/paths.js";
+import { TICKET_ARCHIVE, PATCH_ARCHIVE, OLLAMA_WORKSPACE } from "../shared/paths.js";
 import type { TicketEntry, PatchEntry } from "../types.js";
 
 const OLLAMA_METRICS_DIR = path.join(OLLAMA_WORKSPACE, "metrics");

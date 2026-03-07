@@ -1,5 +1,5 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { ollamaGenerate, ollamaListModels } from "../lib/ollama-client.js";
+import { ollamaGenerate, ollamaListModels } from "../shared/ollama-client.js";
 
 export const tools: Tool[] = [
   {

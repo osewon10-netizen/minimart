@@ -1,9 +1,9 @@
 import { createServer, validateAllowlist } from "./server.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { EXPRESS_MCP_PORT, OLLAMA_WORKSPACE } from "./lib/paths.js";
-import { EXPRESS_ALLOWED_SET, EXPRESS_ALLOWED_TOOLS } from "./lib/express-allowlist.js";
-import { normalizeMcpHeaders } from "./lib/mcp-http-compat.js";
+import { EXPRESS_MCP_PORT, OLLAMA_WORKSPACE } from "./shared/paths.js";
+import { EXPRESS_ALLOWED_SET, EXPRESS_ALLOWED_TOOLS } from "./shared/express-allowlist.js";
+import { normalizeMcpHeaders } from "./shared/mcp-http-compat.js";
 
 const MAX_CONCURRENT_REQUESTS = 4;
 let inFlight = 0;

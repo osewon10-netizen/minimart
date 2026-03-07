@@ -2,20 +2,20 @@ import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   TICKET_INDEX,
   PATCH_INDEX,
-} from "../lib/paths.js";
+} from "../shared/paths.js";
 import {
   readIndex,
   writeIndex,
   allocateId,
   generateSlug,
-} from "../lib/index-manager.js";
-import { normalizeTags } from "../lib/tag-normalizer.js";
+} from "../shared/index-manager.js";
+import { normalizeTags } from "../shared/tag-normalizer.js";
 import {
   validateFailureClass,
   validateAssignedTo,
   validateCreatorIdentity,
-} from "../lib/failure-validator.js";
-import { searchTicketArchive, appendTicketArchive, lookupTicketArchive, lookupPatchArchive } from "../lib/archive.js";
+} from "../shared/failure-validator.js";
+import { searchTicketArchive, appendTicketArchive, lookupTicketArchive, lookupPatchArchive } from "../shared/archive.js";
 import type { TicketIndex, TicketEntry, PatchIndex } from "../types.js";
 
 // ─── Human-readable rendering (on-the-fly, not stored) ─────────────

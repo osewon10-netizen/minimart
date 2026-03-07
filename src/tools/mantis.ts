@@ -1,5 +1,5 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { mantisQuery, mantisMutation } from "../lib/mantis-client.js";
+import { mantisQuery, mantisMutation } from "../shared/mantis-client.js";
 
 export const tools: Tool[] = [
   {

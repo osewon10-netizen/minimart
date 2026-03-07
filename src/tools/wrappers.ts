@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { WRAPPERS_DIR } from "../lib/paths.js";
+import { WRAPPERS_DIR } from "../shared/paths.js";
 
 const execFileAsync = promisify(execFile);
 

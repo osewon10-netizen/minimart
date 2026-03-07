@@ -2,9 +2,9 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { pm2List } from "../lib/pm2-client.js";
-import { mantisQuery, mantisHealthCheck } from "../lib/mantis-client.js";
-import { BACKUP_DIR } from "../lib/paths.js";
+import { pm2List } from "../shared/pm2-client.js";
+import { mantisQuery, mantisHealthCheck } from "../shared/mantis-client.js";
+import { BACKUP_DIR } from "../shared/paths.js";
 import type { MantisServiceState } from "../types.js";
 
 const execFileAsync = promisify(execFile);

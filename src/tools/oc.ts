@@ -7,9 +7,9 @@ import type {
   OcStructuredResult,
   OcTaskEntry,
 } from "../types.js";
-import { OC_ARCHIVE_DIR, OC_INDEX, OC_QUEUE, OC_TRACE_LOG, OLLAMA_WORKSPACE } from "../lib/paths.js";
-import { readIndex, writeIndex, allocateOcId } from "../lib/index-manager.js";
-import { VALID_TASK_TYPES } from "../lib/task-registry.js";
+import { OC_ARCHIVE_DIR, OC_INDEX, OC_QUEUE, OC_TRACE_LOG, OLLAMA_WORKSPACE } from "../shared/paths.js";
+import { readIndex, writeIndex, allocateOcId } from "../shared/index-manager.js";
+import { VALID_TASK_TYPES } from "../shared/task-registry.js";
 
 const VALID_IMPACTS = ["low", "medium", "high", "critical"] as const;
 const VALID_TICKET_TYPES = ["ticket", "patch", "none"] as const;

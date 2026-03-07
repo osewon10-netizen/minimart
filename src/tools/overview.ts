@@ -2,17 +2,17 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { pm2List } from "../lib/pm2-client.js";
-import { mantisQuery, mantisHealthCheck } from "../lib/mantis-client.js";
-import { validateWorkerIdentity } from "../lib/failure-validator.js";
-import { readIndex, writeIndex } from "../lib/index-manager.js";
+import { pm2List } from "../shared/pm2-client.js";
+import { mantisQuery, mantisHealthCheck } from "../shared/mantis-client.js";
+import { validateWorkerIdentity } from "../shared/failure-validator.js";
+import { readIndex, writeIndex } from "../shared/index-manager.js";
 import {
   TICKET_INDEX,
   PATCH_INDEX,
   BACKUP_DIR,
   SERVICE_REPOS,
-} from "../lib/paths.js";
-import { lookupTicketArchive, lookupPatchArchive, appendTicketArchive, appendPatchArchive } from "../lib/archive.js";
+} from "../shared/paths.js";
+import { lookupTicketArchive, lookupPatchArchive, appendTicketArchive, appendPatchArchive } from "../shared/archive.js";
 import type { TicketIndex, PatchIndex, TicketEntry, PatchEntry } from "../types.js";
 
 const execFileAsync = promisify(execFile);

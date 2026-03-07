@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { PROMPTS_DIR } from "../lib/paths.js";
-import { TASK_REGISTRY, VALID_TASK_TYPES } from "../lib/task-registry.js";
+import { PROMPTS_DIR } from "../shared/paths.js";
+import { TASK_REGISTRY, VALID_TASK_TYPES } from "../shared/task-registry.js";
 
 export const tools: Tool[] = [
   {

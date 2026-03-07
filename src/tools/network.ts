@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { METRICS_DIR } from "../lib/paths.js";
+import { METRICS_DIR } from "../shared/paths.js";
 import type { NetworkSample } from "../types.js";
 
 const execFileAsync = promisify(execFile);

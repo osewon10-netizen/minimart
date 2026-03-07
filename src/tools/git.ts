@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { SERVICE_REPOS } from "../lib/paths.js";
+import { SERVICE_REPOS } from "../shared/paths.js";
 
 const execFileAsync = promisify(execFile);
 

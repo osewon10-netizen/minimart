@@ -1,7 +1,7 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import fs from "node:fs/promises";
-import { readIndex, writeIndex } from "../lib/index-manager.js";
-import { PLANS_INDEX, PLANS_ARCHIVE, PLANS_DIR } from "../lib/paths.js";
+import { readIndex, writeIndex } from "../shared/index-manager.js";
+import { PLANS_INDEX, PLANS_ARCHIVE, PLANS_DIR } from "../shared/paths.js";
 import type { IpIndex, IpVerification } from "../types.js";
 
 function textResult(data: unknown): CallToolResult {

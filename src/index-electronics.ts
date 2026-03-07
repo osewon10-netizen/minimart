@@ -1,9 +1,9 @@
 import { createServer, validateAllowlist, type TransitionGuards } from "./server.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { ELECTRONICS_MCP_PORT } from "./lib/paths.js";
-import { ELECTRONICS_ALLOWED_SET, ELECTRONICS_ALLOWED_TOOLS } from "./lib/electronics-allowlist.js";
-import { normalizeMcpHeaders } from "./lib/mcp-http-compat.js";
+import { ELECTRONICS_MCP_PORT } from "./shared/paths.js";
+import { ELECTRONICS_ALLOWED_SET, ELECTRONICS_ALLOWED_TOOLS } from "./shared/electronics-allowlist.js";
+import { normalizeMcpHeaders } from "./shared/mcp-http-compat.js";
 
 const ELECTRONICS_TRANSITION_GUARDS: TransitionGuards = {
   ticket: {

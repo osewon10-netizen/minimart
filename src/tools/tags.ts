@@ -1,6 +1,6 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { normalizeTags } from "../lib/tag-normalizer.js";
-import { validateFailureClass } from "../lib/failure-validator.js";
+import { normalizeTags } from "../shared/tag-normalizer.js";
+import { validateFailureClass } from "../shared/failure-validator.js";
 
 export const tools: Tool[] = [
   {

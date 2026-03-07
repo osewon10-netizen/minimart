@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { MEMORY_DIR, SERVICE_REPOS } from "../lib/paths.js";
+import { MEMORY_DIR, SERVICE_REPOS } from "../shared/paths.js";
 
 // Normalized checklist filenames — all repos use these two files
 const REVIEW_CHECKLIST = "AI_Agent_Code_Review_Checklist.md";

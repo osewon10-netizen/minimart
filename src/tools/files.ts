@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { getFileWorkspace, SERVICE_REPOS } from "../lib/paths.js";
+import { getFileWorkspace, SERVICE_REPOS } from "../shared/paths.js";
 
 const MAX_READ_BYTES = 100 * 1024;  // 100KB
 const MAX_WRITE_BYTES = 1024 * 1024; // 1MB

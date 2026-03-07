@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { pm2Logs } from "../lib/pm2-client.js";
+import { pm2Logs } from "../shared/pm2-client.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_SEARCH_BYTES = 100 * 1024; // 100KB cap on search_logs output

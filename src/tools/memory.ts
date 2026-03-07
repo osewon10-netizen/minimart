@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { MEMORY_DIR, SERVICE_REPOS, TICKETING_DEV_PATH, TICKETING_MINI_PATH } from "../lib/paths.js";
+import { MEMORY_DIR, SERVICE_REPOS, TICKETING_DEV_PATH, TICKETING_MINI_PATH } from "../shared/paths.js";
 
 export const tools: Tool[] = [
   {
