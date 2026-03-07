@@ -155,7 +155,7 @@ export function validateModelIdentity(value: string): IdentityValidation {
  *   side:    dev | mini
  *   service: any word chars (matches service registry names)
  *   modelIdentity: codex/claude/gemini identity string (legacy tokens still accepted with warning)
- * Shorthands: bare "mini" is valid. "dev.minimart" (no model) is a soft warning.
+ * Shorthands: bare "mini" and "dev.{service}" are canonical — no warning required.
  */
 export function validateAssignedTo(
   value: string
@@ -167,22 +167,12 @@ export function validateAssignedTo(
 
   const devNoModel = /^dev\.(\w+)$/.exec(trimmed);
   if (devNoModel && serviceToken.test(devNoModel[1])) {
-    const suggestion = `${trimmed}.claude.sonnet.4.6.std`;
-    return {
-      valid: true,
-      warning: `assigned_to "${trimmed}" is missing model identity and tier. Did you mean "${suggestion}"?`,
-      suggestion,
-    };
+    return { valid: true };
   }
 
   const miniNoModel = /^mini\.(\w+)$/.exec(trimmed);
   if (miniNoModel && serviceToken.test(miniNoModel[1])) {
-    const suggestion = `${trimmed}.claude.sonnet.4.6.std`;
-    return {
-      valid: true,
-      warning: `assigned_to "${trimmed}" is missing model identity and tier. Did you mean "${suggestion}"?`,
-      suggestion,
-    };
+    return { valid: true };
   }
 
   const parts = trimmed.split(".");
@@ -242,11 +232,7 @@ export function validateWorkerIdentity(
   if (!result.valid) return result;
 
   if (value.trim() === "mini" || /^dev\.\w+$/.test(value) || /^mini\.\w+$/.test(value)) {
-    return {
-      valid: true,
-      warning: `worker identity "${value}" should include model identity with tier for observability.`,
-      suggestion: value.trim() === "mini" ? "mini.minimart.claude.sonnet.4.6.std" : result.suggestion,
-    };
+    return { valid: true };
   }
 
   return result;
