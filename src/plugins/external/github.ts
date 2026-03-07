@@ -1,4 +1,5 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { Plugin, SurfaceName } from "../../core/types.js";
 
 const GITHUB_API = "https://api.github.com";
 const TIMEOUT_MS = 15_000;
@@ -210,7 +211,7 @@ async function ghCreateIssue(args: Record<string, unknown>): Promise<CallToolRes
 
 // ─── Tool Definitions ───────────────────────────────────────────────
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "gh_get_file",
     description: "Read a file (or list a directory) from a GitHub repo. Returns decoded content, capped at 50KB.",
@@ -300,7 +301,7 @@ export const tools: Tool[] = [
 
 // ─── Dispatch ───────────────────────────────────────────────────────
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "gh_get_file": return ghGetFile(args);
     case "gh_create_pr": return ghCreatePr(args);
@@ -312,3 +313,27 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return errorResult(`Unknown tool: ${name}`);
   }
 }
+
+const BOTH: readonly SurfaceName[] = ["minimart_express", "minimart_electronics"];
+const EL_ONLY: readonly SurfaceName[] = ["minimart_electronics"];
+
+const SURFACE_MAP: Record<string, readonly SurfaceName[]> = {
+  gh_get_file: BOTH,
+  gh_create_pr: EL_ONLY,
+  gh_get_pr_diff: BOTH,
+  gh_list_commits: BOTH,
+  gh_search_code: BOTH,
+  gh_create_issue: EL_ONLY,
+};
+
+const plugin: Plugin = {
+  name: "external-github",
+  domain: "external",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: SURFACE_MAP[def.name] ?? [],
+  })),
+};
+
+export default plugin;

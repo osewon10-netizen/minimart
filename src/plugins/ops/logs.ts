@@ -3,12 +3,13 @@ import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { pm2Logs } from "../shared/pm2-client.js";
+import type { Plugin } from "../../core/types.js";
+import { pm2Logs } from "../../shared/pm2-client.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_SEARCH_BYTES = 100 * 1024; // 100KB cap on search_logs output
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "service_logs",
     description: "Get recent PM2 logs for a service.",
@@ -71,6 +72,7 @@ async function searchLogs(args: Record<string, unknown>): Promise<CallToolResult
   }
 }
 
+// Exported for cross-module use (ollama-helpers calls this directly)
 export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "service_logs": return serviceLogs(args);
@@ -79,3 +81,15 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 }
+
+const plugin: Plugin = {
+  name: "ops-logs",
+  domain: "ops",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: ["minimart", "minimart_express"] as const,
+  })),
+};
+
+export default plugin;

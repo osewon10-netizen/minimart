@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { getFileWorkspace, SERVICE_REPOS } from "../shared/paths.js";
+import type { Plugin, SurfaceName } from "../../core/types.js";
+import { getFileWorkspace, SERVICE_REPOS } from "../../shared/paths.js";
 
 const MAX_READ_BYTES = 100 * 1024;  // 100KB
 const MAX_WRITE_BYTES = 1024 * 1024; // 1MB
@@ -19,7 +20,7 @@ const BINARY_EXTENSIONS = new Set([
 
 // ─── Tool Definitions ───────────────────────────────────────────────
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "file_read",
     description:
@@ -261,7 +262,7 @@ async function readSourceFile(args: Record<string, unknown>): Promise<CallToolRe
 
 // ─── Dispatch ───────────────────────────────────────────────────────
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "file_read": return fileRead(args);
     case "file_write": return fileWrite(args);
@@ -270,3 +271,24 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 }
+
+const MM_EX: readonly SurfaceName[] = ["minimart", "minimart_express"];
+const ALL: readonly SurfaceName[] = ["minimart", "minimart_express", "minimart_electronics"];
+
+const SURFACE_MAP: Record<string, readonly SurfaceName[]> = {
+  file_read: MM_EX,
+  file_write: MM_EX,
+  read_source_file: ALL,
+};
+
+const plugin: Plugin = {
+  name: "files",
+  domain: "files",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: SURFACE_MAP[def.name] ?? [],
+  })),
+};
+
+export default plugin;

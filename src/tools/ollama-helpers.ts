@@ -5,7 +5,7 @@ import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ollamaGenerate } from "../shared/ollama-client.js";
 import { SERVICE_REPOS, METRICS_DIR, OLLAMA_EVALS_PATH, PROMPTS_DIR } from "../shared/paths.js";
-import { handleCall as logsHandleCall } from "./logs.js";
+import { handleCall as logsHandleCall } from "../plugins/ops/logs.js";
 import { handleCall as healthHandleCall } from "./health.js";
 import { handleCall as ticketsHandleCall } from "./tickets.js";
 import { handleCall as patchesHandleCall } from "./patches.js";

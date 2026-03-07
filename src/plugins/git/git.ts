@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { SERVICE_REPOS } from "../shared/paths.js";
+import type { Plugin } from "../../core/types.js";
+import { SERVICE_REPOS } from "../../shared/paths.js";
 
 const execFileAsync = promisify(execFile);
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "git_log",
     description: "Show recent git commit log for a service repo.",
@@ -107,7 +108,7 @@ async function gitStatus(args: Record<string, unknown>): Promise<CallToolResult>
   }
 }
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "git_log": return gitLog(args);
     case "git_diff": return gitDiff(args);
@@ -116,3 +117,15 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 }
+
+const plugin: Plugin = {
+  name: "git",
+  domain: "git",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: ["minimart", "minimart_express", "minimart_electronics"] as const,
+  })),
+};
+
+export default plugin;

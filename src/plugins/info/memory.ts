@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { MEMORY_DIR, SERVICE_REPOS, TICKETING_DEV_PATH, TICKETING_MINI_PATH } from "../shared/paths.js";
+import type { Plugin, SurfaceName } from "../../core/types.js";
+import { MEMORY_DIR, SERVICE_REPOS, TICKETING_DEV_PATH, TICKETING_MINI_PATH } from "../../shared/paths.js";
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "get_context",
     description: "Search memory files for a topic. Returns matching snippets with filenames.",
@@ -142,7 +143,7 @@ async function getProjectInfo(args: Record<string, unknown>): Promise<CallToolRe
   return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 }
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "get_context": return getContext(args);
     case "set_context": return setContext(args);
@@ -152,3 +153,22 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 }
+
+const SURFACE_MAP: Record<string, readonly SurfaceName[]> = {
+  get_context: ["minimart"],
+  set_context: ["minimart"],
+  get_ticketing_guide: ["minimart", "minimart_express", "minimart_electronics"],
+  get_project_info: ["minimart", "minimart_electronics"],
+};
+
+const plugin: Plugin = {
+  name: "info-memory",
+  domain: "info",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: SURFACE_MAP[def.name] ?? [],
+  })),
+};
+
+export default plugin;

@@ -1,4 +1,5 @@
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { Plugin } from "../../core/types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -99,7 +100,7 @@ async function getDocs(args: Record<string, unknown>): Promise<CallToolResult> {
 
 // ─── Tool Definitions ───────────────────────────────────────────────
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "ctx7_resolve_library",
     description: "Resolve a library/framework name to a Context7-compatible library ID. Use this before ctx7_get_docs.",
@@ -128,7 +129,7 @@ export const tools: Tool[] = [
 
 // ─── Dispatch ───────────────────────────────────────────────────────
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "ctx7_resolve_library": return resolveLibrary(args);
     case "ctx7_get_docs": return getDocs(args);
@@ -136,3 +137,15 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return errorResult(`Unknown tool: ${name}`);
   }
 }
+
+const plugin: Plugin = {
+  name: "external-context7",
+  domain: "external",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: ["minimart_express", "minimart_electronics"] as const,
+  })),
+};
+
+export default plugin;

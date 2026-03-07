@@ -12,29 +12,32 @@ import type { LegacyToolModule } from "./core/types.js";
 
 import * as ticketMod from "./tools/tickets.js";
 import * as patchMod from "./tools/patches.js";
-import * as tagMod from "./tools/tags.js";
-import * as registryMod from "./tools/registry.js";
+// Legacy modules (still in src/tools/ — phases 07-12 will extract these)
 import * as mantisToolMod from "./tools/mantis.js";
 import * as healthMod from "./tools/health.js";
-import * as logMod from "./tools/logs.js";
 import * as deployMod from "./tools/deploy.js";
-import * as reviewMod from "./tools/review.js";
 import * as cronMod from "./tools/cron.js";
-import * as memoryMod from "./tools/memory.js";
-import * as gitMod from "./tools/git.js";
 import * as ollamaMod from "./tools/ollama.js";
-import * as wrappersMod from "./tools/wrappers.js";
-import * as overviewMod from "./tools/overview.js";
-import * as filesMod from "./tools/files.js";
-import * as networkMod from "./tools/network.js";
 import * as trainingMod from "./tools/training.js";
 import * as ocMod from "./tools/oc.js";
 import * as taskConfigMod from "./tools/task-config.js";
 import * as ollamaHelpersMod from "./tools/ollama-helpers.js";
 import * as plansMod from "./tools/plans.js";
 import * as plansOpsMod from "./tools/plans-ops.js";
-import * as context7Mod from "./tools/context7.js";
-import * as githubMod from "./tools/github-embedded.js";
+
+// Native plugins (extracted in phases 03-06)
+import tagsPlugin from "./plugins/info/tags.js";
+import registryPlugin from "./plugins/info/registry.js";
+import networkPlugin from "./plugins/info/network.js";
+import memoryPlugin from "./plugins/info/memory.js";
+import reviewPlugin from "./plugins/review/review.js";
+import wrappersPlugin from "./plugins/info/wrappers.js";
+import overviewPlugin from "./plugins/info/overview.js";
+import context7Plugin from "./plugins/external/context7.js";
+import githubPlugin from "./plugins/external/github.js";
+import gitPlugin from "./plugins/git/git.js";
+import filesPlugin from "./plugins/files/files.js";
+import logsPlugin from "./plugins/ops/logs.js";
 
 type ToolHandler = (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
 
@@ -46,62 +49,52 @@ interface ToolModule {
 const toolModules: ToolModule[] = [
   ticketMod,
   patchMod,
-  tagMod,
-  registryMod,
   mantisToolMod,
   healthMod,
-  logMod,
   deployMod,
-  reviewMod,
   cronMod,
-  memoryMod,
-  gitMod,
   ollamaMod,
-  wrappersMod,
-  overviewMod,
-  filesMod,
-  networkMod,
   trainingMod,
   ocMod,
   taskConfigMod,
   ollamaHelpersMod,
   plansMod,
   plansOpsMod,
-  context7Mod,
-  githubMod,
 ];
 
 // --- Plugin Registry (dual-path: mirrors old toolModules via compat bridge) ---
 
+// Legacy modules still using compat bridge (phases 07-12 will convert these)
 const LEGACY_MODULE_MAP: [LegacyToolModule, string, string][] = [
   [ticketMod, "ticketing-tickets", "ticketing"],
   [patchMod, "ticketing-patches", "ticketing"],
-  [tagMod, "info-tags", "info"],
-  [registryMod, "info-registry", "info"],
   [mantisToolMod, "mantis", "mantis"],
   [healthMod, "ops-health", "ops"],
-  [logMod, "ops-logs", "ops"],
   [deployMod, "ops-deploy", "ops"],
-  [reviewMod, "review", "review"],
   [cronMod, "ops-cron", "ops"],
-  [memoryMod, "info-memory", "info"],
-  [gitMod, "git", "git"],
   [ollamaMod, "ollama-core", "ollama"],
-  [wrappersMod, "info-wrappers", "info"],
-  [overviewMod, "info-overview", "info"],
-  [filesMod, "files", "files"],
-  [networkMod, "info-network", "info"],
   [trainingMod, "review-training", "review"],
   [ocMod, "oc", "oc"],
   [taskConfigMod, "oc-task-config", "oc"],
   [ollamaHelpersMod, "ollama-helpers", "ollama"],
   [plansMod, "plans", "plans"],
   [plansOpsMod, "plans-ops", "plans"],
-  [context7Mod, "external-context7", "external"],
-  [githubMod, "external-github", "external"],
 ];
 
 const pluginRegistry = new PluginRegistry();
+
+// Register native plugins (phases 03-06)
+const NATIVE_PLUGINS = [
+  tagsPlugin, registryPlugin, networkPlugin,       // phase 03
+  memoryPlugin, reviewPlugin, wrappersPlugin, overviewPlugin,  // phase 04
+  context7Plugin, githubPlugin,                     // phase 05
+  gitPlugin, filesPlugin, logsPlugin,               // phase 06
+];
+for (const plugin of NATIVE_PLUGINS) {
+  pluginRegistry.register(plugin);
+}
+
+// Register legacy-wrapped modules
 for (const [mod, name, domain] of LEGACY_MODULE_MAP) {
   pluginRegistry.register(wrapLegacyModule(mod, name, domain));
 }

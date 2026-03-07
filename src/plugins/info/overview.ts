@@ -2,24 +2,25 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { pm2List } from "../shared/pm2-client.js";
-import { mantisQuery, mantisHealthCheck } from "../shared/mantis-client.js";
-import { validateWorkerIdentity } from "../shared/failure-validator.js";
-import { readIndex, writeIndex } from "../shared/index-manager.js";
+import type { Plugin, SurfaceName } from "../../core/types.js";
+import { pm2List } from "../../shared/pm2-client.js";
+import { mantisQuery, mantisHealthCheck } from "../../shared/mantis-client.js";
+import { validateWorkerIdentity } from "../../shared/failure-validator.js";
+import { readIndex, writeIndex } from "../../shared/index-manager.js";
 import {
   TICKET_INDEX,
   PATCH_INDEX,
   BACKUP_DIR,
   SERVICE_REPOS,
-} from "../shared/paths.js";
-import { lookupTicketArchive, lookupPatchArchive, appendTicketArchive, appendPatchArchive } from "../shared/archive.js";
-import type { TicketIndex, PatchIndex, TicketEntry, PatchEntry } from "../types.js";
+} from "../../shared/paths.js";
+import { lookupTicketArchive, lookupPatchArchive, appendTicketArchive, appendPatchArchive } from "../../shared/archive.js";
+import type { TicketIndex, PatchIndex, TicketEntry, PatchEntry } from "../../types.js";
 
 const execFileAsync = promisify(execFile);
 
 // ─── Tool Definitions ───────────────────────────────────────────────
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "server_overview",
     description:
@@ -866,7 +867,7 @@ async function batchArchive(args: Record<string, unknown>): Promise<CallToolResu
 
 // ─── Dispatch ───────────────────────────────────────────────────────
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "server_overview": return serverOverview();
     case "quick_status": return quickStatus();
@@ -879,3 +880,28 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 }
+
+const ALL: readonly SurfaceName[] = ["minimart", "minimart_electronics"];
+const MM_ONLY: readonly SurfaceName[] = ["minimart"];
+
+const SURFACE_MAP: Record<string, readonly SurfaceName[]> = {
+  server_overview: MM_ONLY,
+  quick_status: MM_ONLY,
+  batch_ticket_status: ALL,
+  my_queue: ALL,
+  peek: ALL,
+  pick_up: ALL,
+  batch_archive: MM_ONLY,
+};
+
+const plugin: Plugin = {
+  name: "info-overview",
+  domain: "info",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: SURFACE_MAP[def.name] ?? [],
+  })),
+};
+
+export default plugin;

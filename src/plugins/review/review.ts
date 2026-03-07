@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { MEMORY_DIR, SERVICE_REPOS } from "../shared/paths.js";
+import type { Plugin, SurfaceName } from "../../core/types.js";
+import { MEMORY_DIR, SERVICE_REPOS } from "../../shared/paths.js";
 
 // Normalized checklist filenames — all repos use these two files
 const REVIEW_CHECKLIST = "AI_Agent_Code_Review_Checklist.md";
@@ -13,7 +14,7 @@ function checklistPath(service: string, kind: "review" | "audit"): string | unde
   return path.join(repoPath, kind === "audit" ? AUDIT_CHECKLIST : REVIEW_CHECKLIST);
 }
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "get_checklist",
     description: "Read a review or audit checklist for a service. Optionally extract a specific tier section.",
@@ -141,7 +142,7 @@ async function logReview(args: Record<string, unknown>): Promise<CallToolResult>
   return { content: [{ type: "text", text: JSON.stringify({ logged: true, file: filePath }) }] };
 }
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "get_checklist": return getChecklist(args);
     case "log_review": return logReview(args);
@@ -149,3 +150,20 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 }
+
+const SURFACE_MAP: Record<string, readonly SurfaceName[]> = {
+  get_checklist: ["minimart", "minimart_express", "minimart_electronics"],
+  log_review: ["minimart", "minimart_electronics"],
+};
+
+const plugin: Plugin = {
+  name: "review",
+  domain: "review",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: SURFACE_MAP[def.name] ?? [],
+  })),
+};
+
+export default plugin;

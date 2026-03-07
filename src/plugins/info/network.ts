@@ -2,42 +2,16 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { METRICS_DIR } from "../shared/paths.js";
-import type { NetworkSample } from "../types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { Plugin } from "../../core/types.js";
+import { METRICS_DIR } from "../../shared/paths.js";
+import type { NetworkSample } from "../../types.js";
 
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_TARGETS = ["1.1.1.1", "8.8.8.8"];
 const NETWORK_LOG = path.join(METRICS_DIR, "network.jsonl");
 
-// ─── Tool Definitions ───────────────────────────────────────────────
-
-export const tools: Tool[] = [
-  {
-    name: "network_quality",
-    description:
-      "Measure network latency, jitter, and packet loss to specified targets. Records results as time-series data in metrics/network.jsonl.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        targets: {
-          type: "array",
-          items: { type: "string" },
-          description: "IP addresses or hostnames to ping (default: 1.1.1.1, 8.8.8.8)",
-        },
-      },
-    },
-  },
-];
-
-// ─── Ping Parser ────────────────────────────────────────────────────
-
-/**
- * Parse macOS `ping -c N <target>` output.
- * Example summary line: "round-trip min/avg/max/stddev = 1.234/2.345/3.456/0.567 ms"
- * Example stats line:   "10 packets transmitted, 10 packets received, 0.0% packet loss"
- */
 function parsePingOutput(stdout: string): {
   latency_ms: number;
   jitter_ms: number;
@@ -45,11 +19,9 @@ function parsePingOutput(stdout: string): {
   min_ms: number;
   max_ms: number;
 } {
-  // Packet loss
   const lossMatch = stdout.match(/([\d.]+)%\s+packet loss/);
   const packet_loss_pct = lossMatch ? parseFloat(lossMatch[1]) : 100;
 
-  // Round-trip stats
   const rttMatch = stdout.match(
     /min\/avg\/max\/(?:std-dev|stddev)\s*=\s*([\d.]+)\/([\d.]+)\/([\d.]+)\/([\d.]+)/
   );
@@ -64,11 +36,8 @@ function parsePingOutput(stdout: string): {
     };
   }
 
-  // Total loss — no RTT stats
   return { latency_ms: -1, jitter_ms: -1, packet_loss_pct, min_ms: -1, max_ms: -1 };
 }
-
-// ─── Handler ────────────────────────────────────────────────────────
 
 async function networkQuality(args: Record<string, unknown>): Promise<CallToolResult> {
   const targets = (args.targets as string[] | undefined) ?? DEFAULT_TARGETS;
@@ -94,7 +63,6 @@ async function networkQuality(args: Record<string, unknown>): Promise<CallToolRe
     }
   }
 
-  // Append to JSONL
   try {
     await fs.mkdir(METRICS_DIR, { recursive: true });
     const lines = samples.map((s) => JSON.stringify(s)).join("\n") + "\n";
@@ -111,12 +79,30 @@ async function networkQuality(args: Record<string, unknown>): Promise<CallToolRe
   };
 }
 
-// ─── Dispatch ───────────────────────────────────────────────────────
+const plugin: Plugin = {
+  name: "info-network",
+  domain: "info",
+  tools: [
+    {
+      definition: {
+        name: "network_quality",
+        description:
+          "Measure network latency, jitter, and packet loss to specified targets. Records results as time-series data in metrics/network.jsonl.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            targets: {
+              type: "array",
+              items: { type: "string" },
+              description: "IP addresses or hostnames to ping (default: 1.1.1.1, 8.8.8.8)",
+            },
+          },
+        },
+      },
+      handler: networkQuality,
+      surfaces: ["minimart"],
+    },
+  ],
+};
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
-  switch (name) {
-    case "network_quality": return networkQuality(args);
-    default:
-      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
-  }
-}
+export default plugin;

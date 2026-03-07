@@ -1,5 +1,6 @@
-import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { ServiceInfo } from "../types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { Plugin } from "../../core/types.js";
+import type { ServiceInfo } from "../../types.js";
 
 const SERVICES: ServiceInfo[] = [
   {
@@ -53,19 +54,6 @@ const SERVICES: ServiceInfo[] = [
   },
 ];
 
-export const tools: Tool[] = [
-  {
-    name: "service_registry",
-    description: "Return service metadata from the registry. Pass service name to get a single entry, or omit for all.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        service: { type: "string", description: "Service name (e.g. hobby_bot, maggots, sillage, mantis, minimart)" },
-      },
-    },
-  },
-];
-
 async function serviceRegistry(args: Record<string, unknown>): Promise<CallToolResult> {
   const service = args.service as string | undefined;
   if (service) {
@@ -81,10 +69,25 @@ async function serviceRegistry(args: Record<string, unknown>): Promise<CallToolR
   return { content: [{ type: "text", text: JSON.stringify(SERVICES, null, 2) }] };
 }
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
-  switch (name) {
-    case "service_registry": return serviceRegistry(args);
-    default:
-      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
-  }
-}
+const plugin: Plugin = {
+  name: "info-registry",
+  domain: "info",
+  tools: [
+    {
+      definition: {
+        name: "service_registry",
+        description: "Return service metadata from the registry. Pass service name to get a single entry, or omit for all.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            service: { type: "string", description: "Service name (e.g. hobby_bot, maggots, sillage, mantis, minimart)" },
+          },
+        },
+      },
+      handler: serviceRegistry,
+      surfaces: ["minimart", "minimart_express", "minimart_electronics"],
+    },
+  ],
+};
+
+export default plugin;

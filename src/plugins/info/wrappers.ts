@@ -3,7 +3,8 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tool, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { WRAPPERS_DIR } from "../shared/paths.js";
+import type { Plugin } from "../../core/types.js";
+import { WRAPPERS_DIR } from "../../shared/paths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,7 +17,7 @@ function isSelfDeploy(scriptPath: string): boolean {
   return SELF_DEPLOY_PATTERNS.includes(base);
 }
 
-export const tools: Tool[] = [
+const toolDefs: Tool[] = [
   {
     name: "list_wrappers",
     description: "List available ops/deploy wrapper scripts.",
@@ -196,7 +197,7 @@ async function runWrapper(args: Record<string, unknown>): Promise<CallToolResult
   }
 }
 
-export async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+async function handleCall(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
   switch (name) {
     case "list_wrappers": return listWrappers();
     case "run_wrapper": return runWrapper(args);
@@ -204,3 +205,15 @@ export async function handleCall(name: string, args: Record<string, unknown>): P
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 }
+
+const plugin: Plugin = {
+  name: "info-wrappers",
+  domain: "info",
+  tools: toolDefs.map((def) => ({
+    definition: def,
+    handler: (args) => handleCall(def.name, args),
+    surfaces: ["minimart"] as const,
+  })),
+};
+
+export default plugin;
