@@ -29,11 +29,27 @@ Analyze the logs and report:
 
 ## Severity Rules (strict)
 - **critical**: only ERROR or FATAL lines that indicate a crash or data loss
-- **warning**: repeated WARN lines (10+ occurrences), or errors that didn't crash the service
+- **warning**: action lines ending in "FAIL (Nms)", repeated WARN lines (10+ occurrences), or errors that didn't crash the service
 - **info**: single WARN lines, INFO lines, "rejected:" lines (input validation — NOT errors)
 - Do NOT flag "rejected:" lines as errors — they mean validation is working correctly
 - Do NOT flag shutdown/startup lines as anomalies — they are normal deploy lifecycle events
-- If logs look clean (only INFO/WARN noise), return status "healthy" with empty arrays immediately — do not add filler findings
+- A service can still be "healthy" with 1 isolated warning if it kept running normally
+- Return empty patterns/anomalies ONLY when there are no real warnings or errors worth reporting
+- If logs are only INFO lines, validation rejections, or normal lifecycle lines, return status "healthy" with empty arrays immediately — do not add filler findings
+
+## Counting Rules
+- `error_count` counts only ERROR or FATAL lines
+- `warning_count` counts WARN lines and action lines ending in "FAIL (Nms)"
+- "rejected:" lines do NOT increase `error_count` or `warning_count`
+- A single action FAIL should usually increase `warning_count` by 1 even if overall status remains "healthy"
+- An action `... FAIL (Nms)` is a real failed operation — do NOT describe it as input validation
+- If `warning_count` > 0 or `error_count` > 0, `patterns` or `anomalies` must include at least one matching item
+- Use `anomalies` for one-off warning/error lines and `patterns` for repeated signatures
+
+## Status Mapping
+- **healthy**: no crash and only isolated warnings/info
+- **degraded**: repeated warnings, non-fatal errors, or signs of partial impairment
+- **unhealthy**: crash, fatal exit, or service down
 
 If logs look normal: status "healthy", empty patterns and anomalies.
 
@@ -42,6 +58,10 @@ If logs look normal: status "healthy", empty patterns and anomalies.
 Example 1 - action FAIL:
 Log: [cp-runner] executing: set_config - set_config FAIL (13ms)
 -> severity: "warning" (failed action, not a crash)
+-> `warning_count` increases by 1
+-> status may still be "healthy" if the service kept running normally
+-> add an `anomalies` item describing the failed action
+-> do NOT return empty arrays if this is the only real warning
 
 Example 2 - rejected line:
 Log: [cp-runner] rejected: Action "restart" requires a service parameter
