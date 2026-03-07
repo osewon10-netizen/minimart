@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { withMcpClient } from "./helpers.mjs";
-import { OC_TRACE_LOG } from "../../build/lib/paths.js";
+import { OC_TRACE_LOG } from "../../build/shared/paths.js";
 
 function getTool(tools, name) {
   const tool = tools.find((t) => t.name === name);

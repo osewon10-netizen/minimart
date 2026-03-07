@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeMcpHeaders } from "../../build/lib/mcp-http-compat.js";
+import { normalizeMcpHeaders } from "../../build/shared/mcp-http-compat.js";
 
 test("normalizeMcpHeaders adds streamable Accept values for POST", () => {
   const req = {

@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   validateAssignedTo,
   validateModelIdentity,
-} from "../../build/lib/failure-validator.js";
+} from "../../build/shared/failure-validator.js";
 
 test("model identity accepts codex/claude/gemini tiered formats", () => {
   assert.equal(validateModelIdentity("codex.5.3.low").valid, true);
@@ -25,9 +25,10 @@ test("assigned_to validation supports tiered identities and warns on partial for
   assert.equal(validateAssignedTo("dev.minimart.claude.sonnet.4.6.std").valid, true);
   assert.equal(validateAssignedTo("mini.minimart.gemini.2.5.high").valid, true);
 
+  // dev.minimart is a canonical team-queue shorthand — valid with no warning
   const missingModel = validateAssignedTo("dev.minimart");
   assert.equal(missingModel.valid, true);
-  assert.ok(missingModel.warning);
+  assert.equal(missingModel.warning, undefined);
 
   const invalid = validateAssignedTo("dev.minimart.claude.sonnet.4.6.ultra");
   assert.equal(invalid.valid, false);

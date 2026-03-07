@@ -1,0 +1,12 @@
+services:
+  # Pre-push confidence gate — run before every push:
+  #   docker compose build && docker compose run --rm test
+  test:
+    build:
+      context: .
+      target: builder
+    command: node --test tests/contract/*.test.mjs
+    environment:
+      MINIMART_FILE_WORKSPACE: /tmp/workspace
+      GITHUB_PAT: dummy_pat
+      GITHUB_OWNER: dummy_owner
