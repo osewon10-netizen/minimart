@@ -22,4 +22,9 @@ Write a briefing (15-25 lines max) covering:
 - **Open work:** list open TK/PA IDs with one-line summaries
 - **Recommendation:** what should the developer look at first?
 
-Be direct and specific. Reference ticket/patch IDs. If everything looks clean, say so briefly.
+Be direct and specific. Reference ticket/patch IDs. If everything looks clean, say so in 3 lines and stop — do not pad with generic recommendations.
+
+## Severity Rules
+- Only flag ERROR or FATAL log lines as errors — WARN and INFO are not errors
+- "rejected:" lines in logs are input validation working correctly — do not flag them
+- A service with non-zero restarts but currently running is NOT degraded

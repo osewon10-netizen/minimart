@@ -32,4 +32,15 @@ Analyze metrics for degradation trends:
 }
 ```
 
-If all metrics healthy: status "healthy", empty findings.
+## Severity Bands (strict — do not escalate beyond these)
+- **critical**: service is stopped/errored, OR disk >95%
+- **warning**: memory >70% of limit, OR restart count increased by >5 since last check, OR disk >80%
+- **info**: restarts > 0 but stable, minor memory growth, backup slightly stale
+
+## Rules
+- A service with restarts > 0 but currently running is NOT critical — it is info at most
+- Do NOT flag normal PM2 lifecycle restarts (deploys cause restarts) as warnings
+- Only flag restart frequency if restarts are actively increasing, not just non-zero
+- If all metrics are within thresholds, return status "healthy" with NO findings
+
+If all metrics healthy: status "healthy", empty findings array.

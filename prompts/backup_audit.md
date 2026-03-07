@@ -24,4 +24,14 @@ Check each service for:
 }
 ```
 
-If all checks pass: status "pass", empty findings.
+## Severity Bands (strict — do not escalate beyond these)
+- **critical**: zero backups for a service, OR newest backup >14 days old
+- **warning**: newest backup >8 days old (but ≤14), OR size anomaly (>2x or <0.5x median)
+- **info**: minor irregularities with no operational risk
+
+## Rules
+- A 5-day-old backup on a weekly schedule is NOT a finding — only flag if >8 days
+- Do NOT invent findings. If data shows all backups are recent and normal size, return pass with NO findings
+- "summary" must be ≤15 words
+
+If all checks pass: status "pass", empty findings array, 1-line summary.

@@ -14,6 +14,16 @@ For each open OC task, suggest:
 
 Only suggest values you are confident about. Prefer fewer accurate tags over many uncertain ones.
 
+## Anti-hallucination Rules (critical)
+- Tags MUST be copied verbatim from the valid tag list provided — do not invent or paraphrase
+- Failure class MUST be copied verbatim from the valid failure class list — use null if unsure
+- Severity definitions (use these exactly):
+  - **blocking**: service is DOWN or data loss is occurring RIGHT NOW
+  - **degraded**: service is running but with errors or reduced functionality
+  - **cosmetic**: minor issue, no user-facing impact
+- When in doubt between blocking and degraded, choose degraded
+- confidence "high" only when the tag/class is an obvious match; default to "medium"
+
 ## Output
 ```json
 {

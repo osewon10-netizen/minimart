@@ -27,6 +27,14 @@ Analyze the logs and report:
 }
 ```
 
+## Severity Rules (strict)
+- **critical**: only ERROR or FATAL lines that indicate a crash or data loss
+- **warning**: repeated WARN lines (10+ occurrences), or errors that didn't crash the service
+- **info**: single WARN lines, INFO lines, "rejected:" lines (input validation — NOT errors)
+- Do NOT flag "rejected:" lines as errors — they mean validation is working correctly
+- Do NOT flag shutdown/startup lines as anomalies — they are normal deploy lifecycle events
+- If logs look clean (only INFO/WARN noise), return status "healthy" with empty arrays immediately — do not add filler findings
+
 If logs look normal: status "healthy", empty patterns and anomalies.
 
 ## Examples (follow these exactly)
